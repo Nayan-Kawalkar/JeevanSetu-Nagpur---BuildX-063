@@ -1,69 +1,67 @@
-import Image from "next/image";
+import Link from "next/link";
+import { DEMO_ROLES } from "@/lib/roles";
+import { Badge } from "@/components/ui/badge";
 
-export default function Home() {
+export default function LandingPage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <div className="space-y-10">
+      <section className="grid gap-8 lg:grid-cols-5 lg:items-center">
+        <div className="lg:col-span-3">
+          <Badge tone="danger">Healthcare &amp; Emergency Services · Nagpur</Badge>
+          <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+            The right hospital, not merely the nearest one.
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-600">
+            JeevanSetu 360 puts ICU beds, on-call specialists, blood stock, travel time and hospital acceptance on one
+            shared board, so an ambulance never arrives at a hospital that cannot treat the patient.
           </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href="/paramedic"
+              className="inline-flex items-center rounded-lg bg-red-600 px-5 py-3 text-sm font-semibold text-white hover:bg-red-700"
+            >
+              Start the Rohan demo
+            </Link>
+            <Link
+              href="/control-room"
+              className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+            >
+              Open control room
+            </Link>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="lg:col-span-2">
+          <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Today, without coordination</p>
+            <ol className="mt-3 space-y-2 text-sm text-slate-700">
+              <li className="flex gap-2"><span className="font-mono text-muted">23:20</span> Truck hits motorcyclist on Wardha Road</li>
+              <li className="flex gap-2"><span className="font-mono text-muted">23:34</span> Ambulance reaches nearest private hospital: no ICU, no neurosurgeon</li>
+              <li className="flex gap-2"><span className="font-mono text-muted">00:09</span> Government hospital: low on O-negative</li>
+              <li className="flex gap-2"><span className="font-mono text-muted">01:10</span> Admitted at a hospital that had a bed all along</li>
+            </ol>
+            <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              1 h 50 min lost. Bed status, specialists and blood stock lived in phone calls and registers.
+            </p>
+          </div>
         </div>
-      </main>
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Enter as a demo role</h2>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {DEMO_ROLES.map((r) => (
+            <Link
+              key={r.href}
+              href={r.href}
+              className="group rounded-xl border border-border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow"
+            >
+              <p className="text-base font-semibold text-slate-900 group-hover:underline">{r.label}</p>
+              <p className="mt-1 text-sm text-slate-600">{r.description}</p>
+              <p className="mt-3 text-xs font-medium text-muted">Demo access · no login</p>
+            </Link>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# JeevanSetu 360
 
-## Getting Started
+Real-time emergency coordination for Nagpur. Helps an ambulance reach **the right hospital, not merely the nearest one**
+by putting ICU beds, on-call specialists, blood stock, travel time and hospital acceptance on one shared board.
 
-First, run the development server:
+Build-X hackathon · Track 1: Healthcare & Emergency Services.
+
+> **Safety boundary.** This is a coordination and decision-support prototype with fictional demo data.
+> It does not diagnose patients, prescribe treatment or claim clinical validation. Every recommendation is
+> explainable and requires a human to confirm.
+
+## Run locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000. No environment variables are required. See `.env.example` for optional ones.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` | Production build |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | TypeScript strict check |
+| `npm run check` | lint + typecheck |
 
-## Learn More
+## Roles (demo access, no login)
 
-To learn more about Next.js, take a look at the following resources:
+| Role | Route |
+|---|---|
+| Paramedic | `/paramedic` |
+| Hospital coordinator | `/hospital` |
+| Control room | `/control-room` |
+| Blood bank | `/blood-bank` |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Architecture
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Next.js 16 App Router, TypeScript strict, Tailwind v4, Zod, SWR polling. Modular monolith: business logic lives in
+`lib/services/*`, UI in `app/*` and `components/*`, data in an in-memory store (`lib/store.ts`) seeded with
+fictional Nagpur hospitals so the demo runs with zero infrastructure.
 
-## Deploy on Vercel
+## Build phases
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Foundation: shell, demo banner, role landing, health route ✅
+2. Types, seed data, in-memory store, API routes
+3. Services: requirement extraction, hospital matching, ETA
+4. Paramedic flow
+5. Hospital and blood-bank dashboards with acceptance + reservation
+6. Control room map and timeline
+7. Ambulance status, demo reset, polish
+8. Deployment
