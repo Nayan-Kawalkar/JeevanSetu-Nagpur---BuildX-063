@@ -14,6 +14,7 @@
  * number returned is one a person typed, carrying the age of when they typed it.
  */
 import { handle, json, parseBody } from "@/lib/api";
+import { auditGuardedMutation, effectiveActorRole, requireHospital } from "@/lib/auth";
 import { STALE_AFTER_MINUTES } from "@/lib/services/overview";
 import { expireReservations } from "@/lib/services/reservation";
 import {
@@ -129,6 +130,10 @@ export function GET(_request: Request, context: RouteContext<"/api/hospitals/[id
  * reported back in `notes` rather than applied silently, because an operator whose typed
  * number was overruled needs to know it was.
  *
+ * Guarded by requireHospital: a coordinator signed in at one hospital cannot edit another
+ * hospital's beds, because those numbers decide where an ambulance is sent. Control room and admin
+ * pass. With no role chosen at all the permissive demo session applies — see lib/auth.ts.
+ *
  * The write is stamped MANUAL / HIGH confidence on purpose. Freshness carries weight in the
  * ranking, and a human who has just looked at the ward is the most reliable source this
  * system has — that is the behaviour the weighting exists to reward.
@@ -136,6 +141,7 @@ export function GET(_request: Request, context: RouteContext<"/api/hospitals/[id
 export function PATCH(request: Request, context: RouteContext<"/api/hospitals/[id]">): Promise<Response> {
   return handle(async () => {
     const { id } = await context.params;
+    const session = await requireHospital(id);
     const hospital = getHospital(id);
     const patch = await parseBody(request, UpdateHospitalSchema);
 
@@ -193,10 +199,17 @@ export function PATCH(request: Request, context: RouteContext<"/api/hospitals/[i
     addEvent({
       hospitalId: hospital.id,
       type: "RESOURCE_UPDATED",
-      actorRole: "HOSPITAL_COORDINATOR",
+      // The server's own view of who is acting, not a role the client claimed. With no role
+      // chosen the timeline keeps saying "hospital", which is who is at this screen.
+      actorRole: effectiveActorRole(session, "HOSPITAL_COORDINATOR"),
       message: `${hospital.name} confirmed by ${patch.updatedBy}: ${summary}.${
         notes.length > 0 ? ` ${notes.join(" ")}` : ""
       }`,
+    });
+    auditGuardedMutation(session, {
+      type: "RESOURCE_UPDATED",
+      hospitalId: hospital.id,
+      action: `updated resources at ${hospital.name}`,
     });
 
     return json({ hospital: withFreshness(hospital, Date.now()), notes });

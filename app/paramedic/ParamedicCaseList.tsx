@@ -8,13 +8,8 @@ import { Card, CardBody } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
 import { errorMessage, useLive, useNow } from "@/lib/hooks";
-import {
-  ACTIVE_STATUSES,
-  INCIDENT_LABEL,
-  type CaseSeverity,
-  type EmergencyCase,
-  type Hospital,
-} from "@/lib/types";
+import { useT, type TFunction } from "@/lib/i18n";
+import { ACTIVE_STATUSES, type CaseSeverity, type EmergencyCase, type Hospital } from "@/lib/types";
 import { formatTime } from "@/lib/utils";
 
 /** Most urgent first inside the active group; the crew reads top-down under pressure. */
@@ -26,14 +21,42 @@ const SEVERITY_ORDER: Record<CaseSeverity, number> = { CRITICAL: 0, HIGH: 1, MED
  * `now` is null on the server and for the first paint (see useNow), so the honest fallback is
  * the absolute start time rather than a duration measured against a clock we have not read yet.
  */
-function openLabel(createdAt: string, now: number | null): string {
-  if (now === null) return `opened ${formatTime(createdAt)}`;
+function openLabel(createdAt: string, now: number | null, t: TFunction): string {
+  if (now === null) return t("caseList.openedAt", { time: formatTime(createdAt) });
   const minutes = Math.max(0, Math.round((now - new Date(createdAt).getTime()) / 60_000));
-  if (minutes < 1) return "open under a minute";
-  if (minutes < 60) return `open ${minutes} min`;
+  if (minutes < 1) return t("caseList.openUnderMinute");
+  if (minutes < 60) return t("caseList.openMinutes", { minutes });
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  return rest === 0 ? `open ${hours} h` : `open ${hours} h ${rest} min`;
+  // The hours/minutes pair is assembled from digits and unit letters, which read the same in all
+  // three locales; only the surrounding "open …" frame differs, and that is the template.
+  return t("caseList.openHours", { duration: rest === 0 ? `${hours} h` : `${hours} h ${rest} min` });
+}
+
+/**
+ * The crew's heading and the one big way in. Lives here rather than in page.tsx because it needs
+ * the locale, and page.tsx stays a server component so it can keep exporting route metadata.
+ */
+export function ParamedicIntro() {
+  const t = useT();
+  return (
+    <>
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t("role.paramedic")}</h1>
+        <p className="mt-1 text-sm leading-relaxed text-slate-600">{t("app.disclaimer")}</p>
+      </header>
+
+      <Link
+        href="/paramedic/cases/new"
+        className="flex min-h-[64px] w-full items-center justify-center gap-3 rounded-xl bg-red-600 px-5 py-4 text-center text-lg font-bold text-white shadow-sm transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+      >
+        <span aria-hidden className="text-2xl leading-none">
+          +
+        </span>
+        {t("paramedic.newCase")}
+      </Link>
+    </>
+  );
 }
 
 export function ParamedicCaseList() {
@@ -42,6 +65,7 @@ export function ParamedicCaseList() {
   // where the patient is going; if it fails, the card degrades to the id rather than going blank.
   const hospitals = useLive<{ hospitals: Hospital[] }>("/api/hospitals");
   const now = useNow(30_000);
+  const t = useT();
 
   const hospitalNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -74,10 +98,10 @@ export function ParamedicCaseList() {
         <CardBody className="space-y-3">
           <p role="alert" className="text-sm font-medium text-red-700">
             <span aria-hidden>⚠ </span>
-            Could not load the case list. {errorMessage(cases.error)}
+            {t("caseList.loadFailed")} {errorMessage(cases.error)}
           </p>
           <Button variant="secondary" onClick={() => void cases.mutate()}>
-            Try again
+            {t("error.tryAgain")}
           </Button>
         </CardBody>
       </Card>
@@ -88,7 +112,7 @@ export function ParamedicCaseList() {
     return (
       <Card>
         <CardBody>
-          <Spinner label="Loading cases" />
+          <Spinner label={t("caseList.loadingCases")} />
         </CardBody>
       </Card>
     );
@@ -97,14 +121,14 @@ export function ParamedicCaseList() {
   if (active.length === 0 && earlier.length === 0) {
     return (
       <EmptyState
-        title="No cases yet"
-        description="Nothing is open for this crew. Start the first one and the control room and hospitals see it straight away."
+        title={t("caseList.noCasesTitle")}
+        description={t("caseList.noCasesBody")}
         action={
           <Link
             href="/paramedic/cases/new"
             className="inline-flex min-h-[48px] items-center rounded-lg bg-red-600 px-5 py-3 text-sm font-semibold text-white hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
           >
-            Create the first case
+            {t("caseList.createFirst")}
           </Link>
         }
       />
@@ -116,20 +140,20 @@ export function ParamedicCaseList() {
       {cases.error && (
         <p role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
           <span aria-hidden>⚠ </span>
-          Live updates paused — showing the last list that loaded. {errorMessage(cases.error)}
+          {t("caseList.updatesPaused")} {errorMessage(cases.error)}
         </p>
       )}
 
       <section aria-labelledby="active-cases-heading">
         <div className="flex items-baseline justify-between gap-3">
           <h2 id="active-cases-heading" className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-            Active now
+            {t("caseList.activeNow")}
           </h2>
-          <span className="text-xs text-muted">{active.length} open</span>
+          <span className="text-xs text-muted">{t("caseList.openCount", { count: active.length })}</span>
         </div>
         {active.length === 0 ? (
           <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-muted">
-            Nothing open right now.
+            {t("caseList.nothingOpen")}
           </p>
         ) : (
           <ul className="mt-2 space-y-3">
@@ -153,9 +177,9 @@ export function ParamedicCaseList() {
         <section aria-labelledby="earlier-cases-heading">
           <div className="flex items-baseline justify-between gap-3">
             <h2 id="earlier-cases-heading" className="text-sm font-semibold uppercase tracking-wide text-muted">
-              Earlier today
+              {t("caseList.earlierToday")}
             </h2>
-            <span className="text-xs text-muted">{earlier.length} finished</span>
+            <span className="text-xs text-muted">{t("caseList.finishedCount", { count: earlier.length })}</span>
           </div>
           <ul className="mt-2 space-y-2">
             {earlier.map((emergencyCase) => (
@@ -189,6 +213,7 @@ function CaseRow({
   now: number | null;
   quiet?: boolean;
 }) {
+  const t = useT();
   return (
     <li>
       <Link
@@ -203,23 +228,27 @@ function CaseRow({
           <SeverityBadge severity={emergencyCase.severity} />
           <StatusBadge status={emergencyCase.status} />
           <span className="ml-auto text-xs font-medium text-muted">
-            {quiet ? `opened ${formatTime(emergencyCase.createdAt)}` : openLabel(emergencyCase.createdAt, now)}
+            {quiet
+              ? t("caseList.openedAt", { time: formatTime(emergencyCase.createdAt) })
+              : openLabel(emergencyCase.createdAt, now, t)}
           </span>
         </div>
 
         <p className={quiet ? "mt-2 text-sm font-semibold text-slate-700" : "mt-2 text-base font-semibold text-slate-900"}>
-          {INCIDENT_LABEL[emergencyCase.incidentType]}
+          {t(`incident.${emergencyCase.incidentType}`)}
         </p>
+        {/* The location is free text a crew member typed; it is data, not UI copy, so it is shown as written. */}
         <p className="mt-0.5 text-sm text-slate-600">{emergencyCase.locationLabel}</p>
 
         <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted">
           <div>
-            <dt className="inline">Patient id: </dt>
+            <dt className="inline">{t("caseList.patientId")} </dt>
+            {/* A temporary patient id and a hospital name are identifiers: never translated. */}
             <dd className="inline font-mono text-slate-700">{emergencyCase.tempPatientId}</dd>
           </div>
           <div>
-            <dt className="inline">Hospital: </dt>
-            <dd className="inline text-slate-700">{hospitalName ?? "not chosen yet"}</dd>
+            <dt className="inline">{t("caseList.hospital")} </dt>
+            <dd className="inline text-slate-700">{hospitalName ?? t("caseList.noHospitalYet")}</dd>
           </div>
         </dl>
       </Link>

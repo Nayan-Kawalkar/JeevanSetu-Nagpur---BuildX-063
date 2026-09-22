@@ -30,6 +30,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { errorMessage, HttpError, refreshAll, send, useLive } from "@/lib/hooks";
 import { BLOOD_GROUPS, BLOOD_GROUP_LABEL, type BloodGroup } from "@/lib/types";
 import { cn, formatTime } from "@/lib/utils";
+import { IncomingBloodRequests } from "./IncomingBloodRequests";
 
 /** The API refuses anything above this per group (UpdateBloodBankSchema), so the control stops here too. */
 const MAX_UNITS = 999;
@@ -417,6 +418,10 @@ export function BloodBankConsole({ bankId }: { bankId: string }) {
           )}
         </CardBody>
       </Card>
+
+      {/* Above the stock grid on purpose: an unanswered request has a theatre waiting on it,
+          and tidy inventory can wait thirty seconds longer than a person can. */}
+      <IncomingBloodRequests bankId={bank.id} operator={operator} />
 
       <Card>
         <CardHeader

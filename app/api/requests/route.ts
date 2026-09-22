@@ -9,6 +9,7 @@
  * request between people and reports exactly what the store holds.
  */
 import { ApiError, handle, json, parseBody } from "@/lib/api";
+import { CASE_ROLES, auditGuardedMutation, requireRole } from "@/lib/auth";
 import { requestHospital } from "@/lib/services/cases";
 import { db, expirePendingRequests, listRequests } from "@/lib/store";
 import { REQUEST_STATUSES, type EmergencyCase, type HospitalRequest, type RequestStatus } from "@/lib/types";
@@ -87,13 +88,25 @@ export async function GET(request: Request): Promise<Response> {
 /**
  * POST /api/requests — offer one case to one hospital and start its answer clock.
  *
- * All the guarding lives in requestHospital(): the idempotency key that stops a double tap
+ * Offering a case is the crew's move, so only a paramedic, the control room or an admin may post
+ * here: a hospital coordinator must not be able to invite a patient to their own beds, and a blood
+ * bank has no business in this queue at all.
+ *
+ * The rest of the guarding lives in requestHospital(): the idempotency key that stops a double tap
  * creating two requests, the one-pending-request-per-case rule, and the refusal (422) to offer
  * a critical patient to a hospital that cannot currently supply what the case needs.
  */
 export async function POST(request: Request): Promise<Response> {
   return handle(async () => {
+    const session = await requireRole(...CASE_ROLES);
     const input = await parseBody(request, CreateRequestSchema);
-    return json({ request: requestHospital(input) }, 201);
+    const created = requestHospital(input);
+    auditGuardedMutation(session, {
+      type: "HOSPITAL_REQUESTED",
+      caseId: created.caseId,
+      hospitalId: created.hospitalId,
+      action: `offered case ${created.caseId} to a hospital`,
+    });
+    return json({ request: created }, 201);
   });
 }

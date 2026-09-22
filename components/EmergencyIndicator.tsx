@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR from "swr";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface Health {
@@ -15,6 +16,7 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json() as Promise<Heal
 /** Live "how many emergencies are open right now" pill, polled every 3 s. */
 export function EmergencyIndicator() {
   const { data, error } = useSWR<Health>("/api/health", fetcher, { refreshInterval: 3000 });
+  const t = useT();
   const offline = !!error;
   const active = data?.activeCases ?? 0;
   const critical = data?.criticalCases ?? 0;
@@ -37,7 +39,11 @@ export function EmergencyIndicator() {
         )}
         aria-hidden
       />
-      {offline ? "Offline" : active === 0 ? "No active emergencies" : `${active} active · ${critical} critical`}
+      {offline
+        ? t("shell.offline")
+        : active === 0
+          ? t("shell.noActiveEmergencies")
+          : t("shell.activeCritical", { active, critical })}
     </div>
   );
 }

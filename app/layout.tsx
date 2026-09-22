@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
+import { LanguageProvider } from "@/lib/i18n";
 
 export const metadata: Metadata = {
   title: {
@@ -17,11 +18,18 @@ export const viewport: Viewport = {
   themeColor: "#dc2626",
 };
 
+/**
+ * `lang="en"` is the honest value for the server render: the chosen locale lives in the browser,
+ * so the server cannot know it. LanguageProvider corrects the attribute after mount, which is
+ * what a screen reader reads its voice from.
+ */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
-        <AppShell>{children}</AppShell>
+        <LanguageProvider>
+          <AppShell>{children}</AppShell>
+        </LanguageProvider>
       </body>
     </html>
   );

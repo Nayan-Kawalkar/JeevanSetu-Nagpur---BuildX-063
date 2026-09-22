@@ -19,16 +19,24 @@ import {
   type EventType,
   type Hospital,
   type HospitalRequest,
+  type BloodRequest,
+  type FamilyAccessToken,
+  type MassCasualtyIncident,
 } from "@/lib/types";
 
 export interface Database {
   seededAt: string;
-  counters: { case: number; event: number; request: number; reservation: number };
+  counters: { case: number; event: number; request: number; reservation: number; bloodRequest: number; mci: number; facility: number };
   hospitals: Record<string, Hospital>;
   bloodBanks: Record<string, BloodBank>;
   ambulances: Record<string, Ambulance>;
   cases: Record<string, EmergencyCase>;
   requests: Record<string, HospitalRequest>;
+  bloodRequests: Record<string, BloodRequest>;
+  /** Keyed by the token itself; the token is the only credential a family link has. */
+  familyTokens: Record<string, FamilyAccessToken>;
+  /** Twist 1: declared mass-casualty incidents. */
+  incidents: Record<string, MassCasualtyIncident>;
   events: EmergencyEvent[];
 }
 
@@ -42,12 +50,15 @@ function createDatabase(): Database {
   const seed = buildSeed();
   return {
     seededAt: new Date().toISOString(),
-    counters: { case: 3, event: 1, request: 2, reservation: 2 },
+    counters: { case: 3, event: 1, request: 2, reservation: 2, bloodRequest: 1, mci: 1, facility: 1 },
     hospitals: byId(seed.hospitals),
     bloodBanks: byId(seed.bloodBanks),
     ambulances: byId(seed.ambulances),
     cases: byId(seed.cases),
     requests: byId(seed.requests),
+    bloodRequests: {},
+    familyTokens: {},
+    incidents: {},
     events: seed.events,
   };
 }
@@ -78,6 +89,12 @@ export function nextId(kind: keyof Database["counters"]): string {
       return `REQ-${padded}`;
     case "reservation":
       return `RSV-${padded}`;
+    case "bloodRequest":
+      return `BRQ-${padded}`;
+    case "mci":
+      return `MCI-${padded}`;
+    case "facility":
+      return `CAMP-${padded}`;
   }
 }
 
@@ -147,6 +164,57 @@ export function listRequests(filter: { caseId?: string; hospitalId?: string; sta
     .filter((r) => (filter.hospitalId ? r.hospitalId === filter.hospitalId : true))
     .filter((r) => (filter.status ? r.status === filter.status : true))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function getIncident(id: string): MassCasualtyIncident {
+  const i = db().incidents[id];
+  if (!i) throw new ApiError(404, `Incident ${id} not found`);
+  return i;
+}
+
+export function listIncidents(openOnly = false): MassCasualtyIncident[] {
+  return Object.values(db().incidents)
+    .filter((i) => (openOnly ? !i.closedAt : true))
+    .sort((a, b) => b.declaredAt.localeCompare(a.declaredAt));
+}
+
+/** Adds a facility (a stood-up camp) to the live matching pool. */
+export function addHospital(h: Hospital): Hospital {
+  db().hospitals[h.id] = h;
+  return h;
+}
+
+export function removeHospital(id: string): boolean {
+  if (!db().hospitals[id]) return false;
+  delete db().hospitals[id];
+  return true;
+}
+
+export function getBloodRequest(id: string): BloodRequest {
+  const r = db().bloodRequests[id];
+  if (!r) throw new ApiError(404, `Blood request ${id} not found`);
+  return r;
+}
+
+export function listBloodRequests(
+  filter: { caseId?: string; hospitalId?: string; bloodBankId?: string; status?: BloodRequest["status"] } = {},
+): BloodRequest[] {
+  return Object.values(db().bloodRequests)
+    .filter((r) => (filter.caseId ? r.caseId === filter.caseId : true))
+    .filter((r) => (filter.hospitalId ? r.hospitalId === filter.hospitalId : true))
+    .filter((r) => (filter.bloodBankId ? r.bloodBankId === filter.bloodBankId : true))
+    .filter((r) => (filter.status ? r.status === filter.status : true))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** Looks a family link up by its token. Returns undefined rather than throwing: an
+ *  unknown, expired or revoked token must all look identical to whoever holds it. */
+export function getFamilyToken(token: string): FamilyAccessToken | undefined {
+  return db().familyTokens[token];
+}
+
+export function listFamilyTokens(caseId: string): FamilyAccessToken[] {
+  return Object.values(db().familyTokens).filter((t) => t.caseId === caseId);
 }
 
 export function listEvents(filter: { caseId?: string; hospitalId?: string; limit?: number } = {}): EmergencyEvent[] {

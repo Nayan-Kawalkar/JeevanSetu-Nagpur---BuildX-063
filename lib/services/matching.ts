@@ -21,11 +21,14 @@ import {
   type CaseSeverity,
   type ConfidenceLevel,
   type CountableResource,
+  type FacilityTier,
   type Hospital,
   type MatchResult,
   type RankedHospital,
   type ResourceType,
   type SpecialistType,
+  type TriageTag,
+  triageFromSeverity,
 } from "@/lib/types";
 import { etaMinutes, haversineKm, roadKm, type LatLng } from "@/lib/geo";
 
@@ -43,9 +46,33 @@ export const MATCH_WEIGHTS = {
   freshness: 10,
 } as const;
 
-/** Full travel marks at or under this ETA; zero at or over SLOW_ETA_MINUTES; linear between. */
+/**
+ * Full travel marks at or under this many minutes; zero at or over SLOW_ETA_MINUTES; linear
+ * between. Twist 4: the input is *time to definitive care*, not raw ETA — see below.
+ */
 const FAST_ETA_MINUTES = 5;
 const SLOW_ETA_MINUTES = 40;
+
+/** A hospital with no tier recorded is a standing tertiary hospital, so seeded data is unchanged. */
+const DEFAULT_TIER: FacilityTier = "TERTIARY";
+
+/** How far down the escalation ladder the recommendation had to walk (Twist 3). */
+export const ESCALATION_RUNGS = [
+  "TERTIARY_FULL",
+  "TERTIARY_STABILISE",
+  "SECONDARY_STABILISE",
+  "PRIMARY_MINOR",
+  "NONE",
+] as const;
+export type EscalationRung = (typeof ESCALATION_RUNGS)[number];
+
+export const ESCALATION_RUNG_LABEL: Record<EscalationRung, string> = {
+  TERTIARY_FULL: "Tertiary hospital, every critical need met",
+  TERTIARY_STABILISE: "Tertiary hospital, but not everything is available",
+  SECONDARY_STABILISE: "Secondary centre — can stabilise, transfer likely",
+  PRIMARY_MINOR: "Primary centre or camp, minor injuries only",
+  NONE: "No facility on any rung can take this patient",
+};
 
 /** Freshness is full under 10 minutes old and decays to zero at 120 minutes. */
 const FRESH_MINUTES = 10;
@@ -135,8 +162,58 @@ export interface MatchInput {
   bloodUnitsNeeded?: number;
   hospitals: Hospital[];
   bloodBanks: BloodBank[];
+  /**
+   * Twist 3: human-set triage tag, used only to decide which rung of the facility ladder this
+   * patient may be sent down to. Defaults to `triageFromSeverity(severity)`. It never bends the
+   * weights and it never makes an unsuitable hospital suitable.
+   */
+  triage?: TriageTag;
+  /**
+   * Twist 3: allow the ladder to walk below tertiary when no tertiary hospital is suitable.
+   * Defaults to true. Set false to keep the pool tertiary-only (a coordinator's override).
+   */
+  allowEscalation?: boolean;
   /** Reference time in epoch ms. Defaults to now; pass it to make results reproducible. */
   now?: number;
+}
+
+// ---------- Extended result (Twists 3 and 4) ----------
+
+/**
+ * A ranked hospital with the two things `RankedHospital` in `lib/types.ts` cannot yet carry.
+ * Callers that want the twist fields should type against this rather than `RankedHospital`;
+ * it is a structural superset, so existing code reading a `RankedHospital` keeps working.
+ */
+export interface TimedRankedHospital extends RankedHospital {
+  /**
+   * Twist 4: worst `readinessMinutes` among the resources *this* patient needs. Zero when the
+   * hospital reported nothing, which means ready now.
+   */
+  readinessDelayMinutes: number;
+  /** Twist 4: `etaMinutes + readinessDelayMinutes` — when treatment can actually start. */
+  timeToDefinitiveCare: number;
+  /** The resource responsible for the delay, when there is one. */
+  readinessBlocker?: ResourceType;
+  /** Twist 3: the rung this facility sits on. `TERTIARY` when the facility did not say. */
+  tier: FacilityTier;
+  /** Set only when the tier itself changed the verdict, e.g. "can stabilise, transfer likely". */
+  tierNote?: string;
+}
+
+/** Which rung the recommendation reached, and why — so the UI can be honest that we escalated. */
+export interface EscalationSummary {
+  rung: EscalationRung;
+  /** The tier of the primary recommendation, absent when there is no recommendation at all. */
+  reachedTier?: FacilityTier;
+  /** True when we had to go below "a tertiary hospital that meets every critical need". */
+  escalated: boolean;
+  /** One plain sentence a coordinator can read out. */
+  reason: string;
+}
+
+export interface TimedMatchResult extends MatchResult {
+  ranked: TimedRankedHospital[];
+  escalation: EscalationSummary;
 }
 
 // ---------- Small pure helpers ----------
@@ -302,6 +379,25 @@ interface ExplanationInput {
   dataAgeMinutes: number;
   bloodGroup?: BloodGroup;
   blood?: BloodMatch;
+  /** Twist 4: zero means ready on arrival, and the sentence then reads exactly as it always did. */
+  readinessDelayMinutes: number;
+  readinessBlocker?: ResourceType;
+  timeToDefinitiveCare: number;
+  /** Twist 3: set only when the facility's rung changed the verdict. */
+  tierNote?: string;
+}
+
+/**
+ * The closing sentence. With nothing to wait for it is the familiar "12 min away."; when something
+ * the patient needs is not yet usable it says so and gives the number that actually matters.
+ */
+function arrivalSentence(x: ExplanationInput, cannotTake: boolean): string {
+  if (x.readinessDelayMinutes > 0 && x.readinessBlocker) {
+    const noun = RESOURCE_NOUN[x.readinessBlocker];
+    const tail = cannotTake ? ", and cannot take this patient" : "";
+    return `${x.eta} min away, but the ${noun} is not usable for another ${x.readinessDelayMinutes} min — ${x.timeToDefinitiveCare} min to treatment${tail}.`;
+  }
+  return cannotTake ? `${x.eta} min away, but cannot take this patient.` : `${x.eta} min away.`;
 }
 
 /**
@@ -322,8 +418,9 @@ function buildExplanation(x: ExplanationInput): string {
     const problems = x.missing.includes("BLOOD_BANK")
       ? [...x.missingCritical, "BLOOD_BANK" as const]
       : x.missingCritical;
-    sentences.push(`${capitalise(namedList(problems, missingPhrase, "and"))}.`);
-    sentences.push(`${x.eta} min away, but cannot take this patient.`);
+    if (problems.length > 0) sentences.push(`${capitalise(namedList(problems, missingPhrase, "and"))}.`);
+    if (x.tierNote) sentences.push(x.tierNote);
+    sentences.push(arrivalSentence(x, true));
     return sentences.join(" ");
   }
 
@@ -347,7 +444,8 @@ function buildExplanation(x: ExplanationInput): string {
     first += `, but ${namedList(x.missing, missingPhrase, "and")}`;
   }
   sentences.push(`${first}.`);
-  sentences.push(`${x.eta} min away.`);
+  if (x.tierNote) sentences.push(x.tierNote);
+  sentences.push(arrivalSentence(x, false));
   return sentences.join(" ");
 }
 
@@ -366,6 +464,98 @@ export function explainRanked(r: RankedHospital, hospitalName: string): string {
           ? "Best match"
           : `Option ${r.rank}`;
   return `${lead}: ${hospitalName}. ${r.explanation}`;
+}
+
+// ---------- Twist 4: time to definitive care ----------
+
+/** Plain nouns for the readiness sentence: "the neurosurgeon is 40 min away". */
+const RESOURCE_NOUN: Record<ResourceType, string> = {
+  ICU: "ICU bed",
+  EMERGENCY_BED: "emergency bed",
+  VENTILATOR: "ventilator",
+  CT_SCAN: "CT scanner",
+  OPERATING_ROOM: "operating room",
+  NEUROSURGEON: "neurosurgeon",
+  ORTHOPEDIC_SURGEON: "orthopaedic surgeon",
+  TRAUMA_TEAM: "trauma team",
+  BLOOD_BANK: "blood",
+};
+
+interface Readiness {
+  delayMinutes: number;
+  blocker?: ResourceType;
+}
+
+/**
+ * How long after arrival this patient can actually be treated here.
+ *
+ * A hospital is not "available" the moment the ambulance stops: the neurosurgeon may be paged but
+ * driving in, the CT may have a queue, the theatre may be mid-case. The delay is the **worst** of
+ * the resources this patient needs — you wait for the slowest one — and only those; a busy theatre
+ * is irrelevant to a patient who needs an emergency bed. A hospital that reported nothing is taken
+ * at its word as ready now, which is why seeded data behaves exactly as it did before.
+ */
+function readinessFor(h: Hospital, required: readonly ResourceType[]): Readiness {
+  const reported = h.readinessMinutes;
+  if (!reported) return { delayMinutes: 0 };
+  let delayMinutes = 0;
+  let blocker: ResourceType | undefined;
+  for (const r of required) {
+    const minutes = reported[r];
+    if (minutes === undefined || minutes <= delayMinutes) continue;
+    delayMinutes = Math.max(0, Math.round(minutes));
+    blocker = r;
+  }
+  return { delayMinutes, blocker };
+}
+
+// ---------- Twist 3: the escalation ladder ----------
+
+interface TierVerdict {
+  /** Hard ceiling this tier puts on the verdict, or undefined for "no constraint". */
+  cap?: RankedHospital["suitability"];
+  note?: string;
+}
+
+/**
+ * What a facility's rung permits for this patient. Tertiary hospitals are unconstrained, which is
+ * every seeded facility, so nothing changes until someone records a tier.
+ *
+ * The ladder is deliberately conservative in the clinical direction: a secondary centre is never
+ * offered as a complete answer, only as a place that can stabilise; primary centres and camps are
+ * offered for GREEN-level need alone, which protects the tier above for the patients who need it.
+ */
+function tierVerdict(
+  tier: FacilityTier,
+  missingCriticalCount: number,
+  greenLevel: boolean,
+  allowEscalation: boolean,
+): TierVerdict {
+  if (tier === "TERTIARY") return {};
+  if (!allowEscalation) {
+    return { cap: "UNSUITABLE", note: "Not a tertiary hospital, and escalation is switched off." };
+  }
+  if (tier === "SECONDARY") {
+    if (missingCriticalCount > 0) {
+      return { cap: "UNSUITABLE", note: "Secondary centre, and it is missing something critical." };
+    }
+    return { cap: "PARTIAL", note: "Secondary centre: can stabilise, transfer likely." };
+  }
+  // PRIMARY and CAMP.
+  if (!greenLevel) {
+    const what = tier === "CAMP" ? "An emergency camp" : "A primary health centre";
+    return { cap: "UNSUITABLE", note: `${what} cannot take a patient at this level of need.` };
+  }
+  return { cap: "PARTIAL", note: "Minor injuries only, taken here to protect trauma capacity." };
+}
+
+/** UNSUITABLE beats PARTIAL beats SUITABLE when a tier caps the verdict. */
+function applyCap(
+  suitability: RankedHospital["suitability"],
+  cap: RankedHospital["suitability"] | undefined,
+): RankedHospital["suitability"] {
+  if (!cap) return suitability;
+  return BAND_ORDER[cap] > BAND_ORDER[suitability] ? cap : suitability;
 }
 
 // ---------- Ranking ----------
@@ -397,15 +587,20 @@ function hasCapability(h: Hospital, r: ResourceType, blood: BloodMatch | undefin
  * Pure: the only clock read is the default for `input.now`, and every hospital passed in appears
  * in `ranked` exactly once.
  */
-export function rankHospitals(input: MatchInput): MatchResult {
+export function rankHospitals(input: MatchInput): TimedMatchResult {
   const now = input.now ?? Date.now();
   const required = Array.from(new Set(input.requirements));
+  const allowEscalation = input.allowEscalation ?? true;
+  const triage = input.triage ?? triageFromSeverity(input.severity);
+  // "GREEN-level need" is both a green tag and an absence of critical requirements: a tag alone
+  // must not be able to send a patient who needs a ventilator to a field camp.
+  const greenLevel = triage === "GREEN" && !required.some((r) => CRITICAL_RESOURCES.includes(r));
   const requiredCountable = required.filter(isCountable);
   const requiredSpecialists = required.filter(isSpecialist);
   const unitsNeeded = input.bloodUnitsNeeded ?? DEFAULT_BLOOD_UNITS;
   const group = input.bloodGroup;
 
-  const rows: RankedHospital[] = input.hospitals.map((h) => {
+  const rows: TimedRankedHospital[] = input.hospitals.map((h) => {
     // The bank is looked up whenever a group is known: the crew asks "is O- there?" even when
     // blood was never added to the formal requirement list.
     const blood = group ? findBlood(h, input.bloodBanks, group, unitsNeeded, now) : undefined;
@@ -418,12 +613,20 @@ export function rankHospitals(input: MatchInput): MatchResult {
     }
     const missingCritical = missing.filter((r) => CRITICAL_RESOURCES.includes(r));
 
-    const suitability: RankedHospital["suitability"] =
+    const baseSuitability: RankedHospital["suitability"] =
       missingCritical.length > 0 ? "UNSUITABLE" : missing.length > 0 ? "PARTIAL" : "SUITABLE";
+
+    const tier = h.tier ?? DEFAULT_TIER;
+    const verdict = tierVerdict(tier, missingCritical.length, greenLevel, allowEscalation);
+    const suitability = applyCap(baseSuitability, verdict.cap);
+    // Tertiary facilities produce no note at all, so an existing recommendation reads unchanged.
+    const tierNote = verdict.note;
 
     const at: LatLng = { lat: h.lat, lng: h.lng };
     const distanceKm = roadKm(input.origin, at);
     const eta = etaMinutes(input.origin, at);
+    const readiness = readinessFor(h, required);
+    const timeToDefinitiveCare = eta + readiness.delayMinutes;
     const dataAgeMinutes = ageInMinutes(h.lastUpdatedAt, now);
     const stale = dataAgeMinutes > STALE_AFTER_MINUTES;
 
@@ -432,7 +635,9 @@ export function rankHospitals(input: MatchInput): MatchResult {
       share(requiredCountable, (r) => h.resources[r].available > 0) * MATCH_WEIGHTS.availability;
     const specialists =
       share(requiredSpecialists, (r) => h.specialists[r].onCall) * MATCH_WEIGHTS.specialists;
-    const travel = travelFraction(eta) * MATCH_WEIGHTS.travel;
+    // Twist 4: the weight is unchanged at 15 — the *input* was wrong. Scoring raw travel time
+    // rewards a hospital you can reach quickly and then wait in.
+    const travel = travelFraction(timeToDefinitiveCare) * MATCH_WEIGHTS.travel;
     const freshness = freshnessFraction(dataAgeMinutes, h.confidenceLevel) * MATCH_WEIGHTS.freshness;
     const score = round1(capability + availability + specialists + travel + freshness);
 
@@ -451,6 +656,11 @@ export function rankHospitals(input: MatchInput): MatchResult {
       bloodUnitsAvailable: blood?.units,
       dataAgeMinutes,
       stale,
+      readinessDelayMinutes: readiness.delayMinutes,
+      timeToDefinitiveCare,
+      readinessBlocker: readiness.blocker,
+      tier,
+      tierNote,
       breakdown: {
         capability: round1(capability),
         availability: round1(availability),
@@ -468,19 +678,25 @@ export function rankHospitals(input: MatchInput): MatchResult {
         dataAgeMinutes,
         bloodGroup: group,
         blood,
+        readinessDelayMinutes: readiness.delayMinutes,
+        readinessBlocker: readiness.blocker,
+        timeToDefinitiveCare,
+        tierNote,
       }),
     };
   });
 
   // Band first (a suitable hospital always beats an unsuitable one), then score, then the faster
   // arrival, then id so the order is total and the demo is reproducible.
-  const ranked = rows
+  // The tie-break is time to definitive care rather than ETA for the same reason the score is:
+  // with no readiness reported the two are equal, so seeded behaviour is untouched.
+  const ranked: TimedRankedHospital[] = rows
     .slice()
     .sort(
       (a, b) =>
         BAND_ORDER[a.suitability] - BAND_ORDER[b.suitability] ||
         b.score - a.score ||
-        a.etaMinutes - b.etaMinutes ||
+        a.timeToDefinitiveCare - b.timeToDefinitiveCare ||
         a.hospitalId.localeCompare(b.hospitalId),
     )
     .map((r, i) => ({ ...r, rank: i + 1 }));
@@ -496,6 +712,85 @@ export function rankHospitals(input: MatchInput): MatchResult {
     at: new Date(now).toISOString(),
     primaryHospitalId: primary?.hospitalId,
     backupHospitalId: backup?.hospitalId,
-    ranked,
+    ranked: withReadinessArgument(ranked, primary),
+    escalation: summariseEscalation(primary, allowEscalation, greenLevel),
+  };
+}
+
+/**
+ * Says out loud when readiness — not distance — chose the winner.
+ *
+ * Only when the recommendation is genuinely not the closest offerable hospital *and* it still
+ * reaches treatment sooner. Otherwise the sentence would be a boast with nothing behind it, and
+ * with no readiness reported anywhere the condition can never fire, so seeded output is byte-identical.
+ */
+function withReadinessArgument(
+  ranked: TimedRankedHospital[],
+  primary: TimedRankedHospital | undefined,
+): TimedRankedHospital[] {
+  if (!primary) return ranked;
+  const offerable = ranked.filter((r) => r.suitability !== "UNSUITABLE" && r.hospitalId !== primary.hospitalId);
+  let closest: TimedRankedHospital | undefined;
+  for (const r of offerable) {
+    if (!closest || r.etaMinutes < closest.etaMinutes) closest = r;
+  }
+  if (!closest) return ranked;
+  if (closest.etaMinutes >= primary.etaMinutes) return ranked;
+  if (closest.timeToDefinitiveCare <= primary.timeToDefinitiveCare) return ranked;
+
+  const further = primary.etaMinutes - closest.etaMinutes;
+  const blocker = closest.readinessBlocker ? RESOURCE_NOUN[closest.readinessBlocker] : "the team there";
+  const sentence = `${further} min further, but ${blocker} is ready here — ${primary.timeToDefinitiveCare} min to treatment against ${closest.timeToDefinitiveCare}.`;
+  return ranked.map((r) =>
+    r.hospitalId === primary.hospitalId ? { ...r, explanation: `${r.explanation} ${sentence}` } : r,
+  );
+}
+
+/** Which rung the primary recommendation landed on, and one sentence saying why that is honest. */
+function summariseEscalation(
+  primary: TimedRankedHospital | undefined,
+  allowEscalation: boolean,
+  greenLevel: boolean,
+): EscalationSummary {
+  if (!primary) {
+    return {
+      rung: "NONE",
+      escalated: true,
+      reason: allowEscalation
+        ? "No facility on any rung can take this patient right now. Consider standing up a camp or widening the search."
+        : "No tertiary hospital can take this patient, and escalation below tertiary is switched off.",
+    };
+  }
+  if (primary.tier === "TERTIARY") {
+    if (primary.suitability === "SUITABLE") {
+      return {
+        rung: "TERTIARY_FULL",
+        reachedTier: "TERTIARY",
+        escalated: false,
+        reason: "A tertiary hospital meets every critical need, so no escalation was needed.",
+      };
+    }
+    return {
+      rung: "TERTIARY_STABILISE",
+      reachedTier: "TERTIARY",
+      escalated: true,
+      reason: "No tertiary hospital has everything. The best one can still take the patient, but something on the list is missing.",
+    };
+  }
+  if (primary.tier === "SECONDARY") {
+    return {
+      rung: "SECONDARY_STABILISE",
+      reachedTier: "SECONDARY",
+      escalated: true,
+      reason: "No tertiary hospital is suitable, so we escalated down to a secondary centre that meets the critical needs. Plan for onward transfer.",
+    };
+  }
+  return {
+    rung: "PRIMARY_MINOR",
+    reachedTier: primary.tier,
+    escalated: true,
+    reason: greenLevel
+      ? "Minor injuries, sent to a primary centre or camp on purpose so trauma capacity stays free for patients who need it."
+      : "Only a primary centre or camp is available. This is a holding position, not definitive care.",
   };
 }

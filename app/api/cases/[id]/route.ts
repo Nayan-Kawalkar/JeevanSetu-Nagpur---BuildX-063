@@ -11,6 +11,7 @@
  */
 import type { NextRequest } from "next/server";
 import { handle, json, parseBody } from "@/lib/api";
+import { CASE_ROLES, auditGuardedMutation, effectiveActorRole, requireRole } from "@/lib/auth";
 import { updateCase } from "@/lib/services/cases";
 import { expireReservations } from "@/lib/services/reservation";
 import {
@@ -71,13 +72,21 @@ export async function GET(_request: NextRequest, ctx: RouteContext<"/api/cases/[
  * PATCH /api/cases/:id — a human correcting the record: requirements, blood group and units,
  * severity, or a status move the lifecycle allows.
  *
+ * Guarded to the crew and the people coordinating them. The author recorded on the timeline is the
+ * server's session role, not the actorRole in the body: the body is a client claim, and the
+ * timeline is the record of who actually changed a patient's requirements.
+ *
  * The service decides what is legal and writes the audit event; refusing an impossible move here
  * as well would duplicate the state machine and let the two copies drift apart.
  */
 export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/cases/[id]">): Promise<Response> {
   return handle(async () => {
     const { id } = await ctx.params;
+    const session = await requireRole(...CASE_ROLES);
     const patch = await parseBody(request, UpdateCaseSchema);
-    return json({ case: updateCase(id, patch) });
+    const actorRole = effectiveActorRole(session, patch.actorRole);
+    const updated = updateCase(id, { ...patch, actorRole });
+    auditGuardedMutation(session, { type: "REQUIREMENTS_EDITED", caseId: updated.id, action: `edited case ${updated.id}` });
+    return json({ case: updated });
   });
 }

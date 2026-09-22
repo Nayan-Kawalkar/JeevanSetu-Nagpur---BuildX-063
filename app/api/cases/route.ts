@@ -11,6 +11,7 @@
  */
 import type { NextRequest } from "next/server";
 import { ApiError, handle, json, parseBody } from "@/lib/api";
+import { CASE_ROLES, auditGuardedMutation, requireRole } from "@/lib/auth";
 import { createCase } from "@/lib/services/cases";
 import { expireReservations } from "@/lib/services/reservation";
 import { expirePendingRequests, listCases } from "@/lib/store";
@@ -84,14 +85,23 @@ export async function GET(request: NextRequest): Promise<Response> {
 /**
  * POST /api/cases — opens a case from the paramedic's incident form.
  *
+ * Only a paramedic, the control room or an admin may open a case; the guard runs before the body
+ * is even read, so an unauthorised caller never reaches the extraction step.
+ *
  * The body is validated before anything is written, because a half-filled case reaching the
  * matching engine would rank hospitals against requirements nobody actually confirmed. 201 with
  * the created case so the client can navigate straight to it without a second round trip.
  */
 export async function POST(request: NextRequest): Promise<Response> {
   return handle(async () => {
+    const session = await requireRole(...CASE_ROLES);
     const input = await parseBody(request, CreateCaseSchema);
     const created = await createCase(input);
+    auditGuardedMutation(session, {
+      type: "CASE_CREATED",
+      caseId: created.id,
+      action: `opened case ${created.id}`,
+    });
     return json({ case: created }, 201);
   });
 }

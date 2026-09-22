@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { errorMessage, useLive } from "@/lib/hooks";
 import type { CaseStatus, Hospital } from "@/lib/types";
 import { AmbulanceControls } from "./AmbulanceControls";
+import { FamilyLinkCard } from "./FamilyLinkCard";
 import { HospitalMatching } from "./HospitalMatching";
 import { Notice } from "./Notice";
 import { PatientHeader } from "./PatientHeader";
@@ -130,6 +131,11 @@ export function CaseScreen({ caseId }: { caseId: string }) {
               ambulance={ambulance}
             />
           )}
+
+          {/* Last in the column on purpose: the crew sorts the patient out first, then tells
+              the family. It stays visible after handover, because that is exactly when a
+              relative who has just been sent the link is refreshing it. */}
+          <FamilyLinkCard caseId={emergencyCase.id} />
         </div>
 
         <aside className="min-w-0">

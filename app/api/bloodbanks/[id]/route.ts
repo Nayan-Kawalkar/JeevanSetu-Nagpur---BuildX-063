@@ -13,6 +13,7 @@
  * Coordination only: these are reported figures, stamped with who reported them and when.
  */
 import { handle, json, parseBody } from "@/lib/api";
+import { auditGuardedMutation, effectiveActorRole, requireBloodBank } from "@/lib/auth";
 import { LOW_BLOOD_UNITS, STALE_AFTER_MINUTES } from "@/lib/services/overview";
 import { expireReservations } from "@/lib/services/reservation";
 import { addEvent, getBloodBank, nowIso } from "@/lib/store";
@@ -78,12 +79,17 @@ export function GET(_request: Request, context: RouteContext<"/api/bloodbanks/[i
  * and at zero; anything the floors changed comes back in `notes` so the operator sees that
  * their number was adjusted and why.
  *
+ * Guarded by requireBloodBank: an operator signed in at one bank cannot retype another bank's
+ * shelf. Control room and admin pass. With no role chosen the permissive demo session applies —
+ * see lib/auth.ts.
+ *
  * Stamped HIGH confidence because a human has just counted — that is the freshest source this
  * system has, and the matching score is meant to reward it.
  */
 export function PATCH(request: Request, context: RouteContext<"/api/bloodbanks/[id]">): Promise<Response> {
   return handle(async () => {
     const { id } = await context.params;
+    const session = await requireBloodBank(id);
     const bank = getBloodBank(id);
     const patch = await parseBody(request, UpdateBloodBankSchema);
 
@@ -119,10 +125,17 @@ export function PATCH(request: Request, context: RouteContext<"/api/bloodbanks/[
     addEvent({
       bloodBankId: bank.id,
       type: "BLOOD_STOCK_UPDATED",
-      actorRole: "BLOOD_BANK_OPERATOR",
+      // Server-decided author. With no role chosen the timeline keeps saying "blood bank".
+      actorRole: effectiveActorRole(session, "BLOOD_BANK_OPERATOR"),
       message: `${bank.name} stock confirmed by ${patch.updatedBy}: ${summary}.${
         notes.length > 0 ? ` ${notes.join(" ")}` : ""
       }`,
+    });
+
+    auditGuardedMutation(session, {
+      type: "BLOOD_STOCK_UPDATED",
+      bloodBankId: bank.id,
+      action: `updated stock at ${bank.name}`,
     });
 
     return json({ bloodBank: withFreshness(bank, Date.now()), notes });

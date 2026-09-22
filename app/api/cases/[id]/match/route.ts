@@ -15,6 +15,7 @@
  * its reason; it is never a clinical judgement and never an instruction.
  */
 import { handle, json } from "@/lib/api";
+import { CASE_ROLES, auditGuardedMutation, requireRole } from "@/lib/auth";
 import { matchCase, previewMatch } from "@/lib/services/cases";
 import { listHospitals } from "@/lib/store";
 import type { Hospital, MatchResult } from "@/lib/types";
@@ -58,13 +59,18 @@ function matchResponse(match: MatchResult): MatchResponse {
 
 /**
  * POST /api/cases/:id/match — rank the hospitals for this case and record the decision.
+ * Guarded to the crew, the control room and admin: it writes a decision into the case history. The
+ * GET below stays open, because reading a ranking changes nothing.
  * Returns 404 if the case is unknown and 409 (from the case service, message intact) if the
  * case is already closed or cancelled and there is nothing left to match.
  */
 export async function POST(_request: Request, context: RouteContext<"/api/cases/[id]/match">): Promise<Response> {
   return handle(async () => {
     const { id } = await context.params;
-    return json(matchResponse(matchCase(id)));
+    const session = await requireRole(...CASE_ROLES);
+    const match = matchCase(id);
+    auditGuardedMutation(session, { type: "MATCHING_COMPLETED", caseId: id, action: `ran matching for case ${id}` });
+    return json(matchResponse(match));
   });
 }
 

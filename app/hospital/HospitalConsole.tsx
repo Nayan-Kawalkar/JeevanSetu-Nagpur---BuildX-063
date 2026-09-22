@@ -14,6 +14,7 @@ import type { EmergencyCase, EmergencyEvent, HospitalRequest } from "@/lib/types
 import type { UpdateHospitalInput } from "@/lib/validation";
 import { CurrentPatients } from "./CurrentPatients";
 import { IncomingRequests } from "./IncomingRequests";
+import { RequestBlood } from "./RequestBlood";
 import { ResourceBoard } from "./ResourceBoard";
 
 /** GET /api/hospitals/:id — the whole desk in one read, so nothing on screen is seconds apart. */
@@ -160,6 +161,7 @@ export function HospitalConsole({ hospitalId }: { hospitalId: string }) {
             respondedBy={actor}
             onChanged={() => void refreshAll()}
           />
+          <RequestBlood hospital={hospital} cases={data.cases} requestedBy={actor} />
           <ResourceBoard hospital={hospital} onSave={saveHospital} />
           <CurrentPatients hospitalId={hospital.id} hospitalName={hospital.name} cases={data.cases} />
         </div>

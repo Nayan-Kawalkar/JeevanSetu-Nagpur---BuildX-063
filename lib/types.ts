@@ -135,6 +135,13 @@ export const EVENT_TYPES = [
   "CASE_CANCELLED",
   "RESOURCE_UPDATED",
   "BLOOD_STOCK_UPDATED",
+  "BLOOD_REQUESTED",
+  "BLOOD_RESERVED",
+  "BLOOD_REQUEST_REJECTED",
+  "BLOOD_FULFILLED",
+  "BLOOD_RELEASED",
+  "FAMILY_LINK_CREATED",
+  "FAMILY_LINK_REVOKED",
   "DEMO_RESET",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -158,6 +165,16 @@ export interface Hospital {
   id: string;
   name: string;
   type: "GOVERNMENT" | "PRIVATE";
+  /** Twist 3: which rung of the escalation ladder this facility sits on. */
+  tier?: FacilityTier;
+  /** Twist 3: a camp stood up during an incident, rather than a standing facility. */
+  temporary?: boolean;
+  /**
+   * Twist 4: minutes until the things this hospital offers are actually usable —
+   * the specialist is paged but travelling, the CT has a queue, the theatre is mid-case.
+   * Ranking on travel time alone ignores this and picks hospitals that are not ready.
+   */
+  readinessMinutes?: Partial<Record<ResourceType, number>>;
   area: string;
   address: string;
   phone: string;
@@ -281,6 +298,12 @@ export interface EmergencyCase {
   locationLabel: string;
   requirements: ResourceType[];
   requirementSource?: "KEYWORD" | "AI" | "MANUAL";
+  /** Twist 4: when the injury happened, which starts the golden hour. Defaults to createdAt. */
+  incidentAt?: string;
+  /** Twist 1: triage colour, set or confirmed by a human. */
+  triage?: TriageTag;
+  /** Twist 1: the mass-casualty incident this patient came from, if any. */
+  mciId?: string;
   missingInformation: string[];
   status: CaseStatus;
   ambulanceId?: string;
@@ -303,3 +326,135 @@ export interface EmergencyEvent {
   message: string;
   at: string;
 }
+
+// ---------- Phase 9: explicit blood requests ----------
+
+export const BLOOD_COMPONENTS = ["WHOLE_BLOOD", "PACKED_RED_CELLS", "PLASMA", "PLATELETS"] as const;
+export type BloodComponent = (typeof BLOOD_COMPONENTS)[number];
+
+export const BLOOD_COMPONENT_LABEL: Record<BloodComponent, string> = {
+  WHOLE_BLOOD: "Whole blood",
+  PACKED_RED_CELLS: "Packed red cells",
+  PLASMA: "Plasma",
+  PLATELETS: "Platelets",
+};
+
+/**
+ * A hospital asking a named blood bank to hold units for a named case.
+ * Accepting goes straight to RESERVED: an operator saying yes without holding the
+ * units is the WhatsApp-group failure this whole module exists to replace.
+ */
+export const BLOOD_REQUEST_STATUSES = ["PENDING", "RESERVED", "REJECTED", "FULFILLED", "RELEASED", "EXPIRED"] as const;
+export type BloodRequestStatus = (typeof BLOOD_REQUEST_STATUSES)[number];
+
+export interface BloodRequest {
+  id: string;
+  caseId: string;
+  hospitalId: string;
+  bloodBankId: string;
+  bloodGroup: BloodGroup;
+  component: BloodComponent;
+  units: number;
+  status: BloodRequestStatus;
+  /** Operator's reason when rejecting. */
+  reason?: string;
+  requestedBy: string;
+  respondedBy?: string;
+  createdAt: string;
+  expiresAt: string;
+  respondedAt?: string;
+}
+
+// ---------- Phase 10: family access ----------
+
+/**
+ * A read-only, expiring link for one case. The token is the only credential, so it is
+ * long and random, it is never shown on any staff screen beyond the copy control, and
+ * the page it opens carries no clinical notes and no staff commentary.
+ */
+export interface FamilyAccessToken {
+  token: string;
+  caseId: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt?: string;
+  lastViewedAt?: string;
+  viewCount: number;
+}
+
+// ---------- Phase 10: language ----------
+
+export const LOCALES = ["en", "mr", "hi"] as const;
+export type Locale = (typeof LOCALES)[number];
+
+export const LOCALE_LABEL: Record<Locale, string> = {
+  en: "English",
+  mr: "मराठी",
+  hi: "हिंदी",
+};
+
+// ---------- Twist 1: mass-casualty surge ----------
+
+/**
+ * START triage colours, the vocabulary responders already use.
+ * A human always sets or confirms these. The system never assigns EXPECTANT on its own —
+ * that is a clinical judgement and outside this tool's safety boundary.
+ */
+export const TRIAGE_TAGS = ["RED", "YELLOW", "GREEN", "BLACK"] as const;
+export type TriageTag = (typeof TRIAGE_TAGS)[number];
+
+export const TRIAGE_LABEL: Record<TriageTag, string> = {
+  RED: "Immediate",
+  YELLOW: "Delayed",
+  GREEN: "Minor",
+  BLACK: "Expectant",
+};
+
+export const TRIAGE_ORDER: Record<TriageTag, number> = { RED: 0, YELLOW: 1, GREEN: 2, BLACK: 3 };
+
+/** Default tag from the severity the crew already chose; always overridable by a human. */
+export function triageFromSeverity(severity: CaseSeverity): TriageTag {
+  if (severity === "CRITICAL") return "RED";
+  if (severity === "HIGH") return "YELLOW";
+  return "GREEN";
+}
+
+export interface MassCasualtyIncident {
+  id: string;
+  label: string;
+  lat: number;
+  lng: number;
+  declaredAt: string;
+  declaredBy: string;
+  caseIds: string[];
+  closedAt?: string;
+}
+
+// ---------- Twist 3: facility tiers and overflow ----------
+
+export const FACILITY_TIERS = ["TERTIARY", "SECONDARY", "PRIMARY", "CAMP"] as const;
+export type FacilityTier = (typeof FACILITY_TIERS)[number];
+
+export const FACILITY_TIER_LABEL: Record<FacilityTier, string> = {
+  TERTIARY: "Tertiary hospital",
+  SECONDARY: "Secondary centre",
+  PRIMARY: "Primary health centre",
+  CAMP: "Emergency camp",
+};
+
+// ---------- Twist 4: golden hour ----------
+
+export const GOLDEN_HOUR_MINUTES = 60;
+
+/** Where the hour actually goes. Most of it is usually coordination, not driving. */
+export const CARE_PHASES = ["DETECTION", "DISPATCH", "TO_SCENE", "ON_SCENE", "TO_HOSPITAL", "HANDOVER"] as const;
+export type CarePhase = (typeof CARE_PHASES)[number];
+
+export const CARE_PHASE_LABEL: Record<CarePhase, string> = {
+  DETECTION: "Call received",
+  DISPATCH: "Finding a hospital",
+  TO_SCENE: "Travel to scene",
+  ON_SCENE: "On scene",
+  TO_HOSPITAL: "Travel to hospital",
+  HANDOVER: "Handover",
+};
