@@ -364,7 +364,12 @@ function collectAlerts(input: {
     });
   }
 
-  // Blood: nothing left in the whole city is a different problem from one bank running low.
+  // Blood: one alert per scarce GROUP, not per bank.
+  //
+  // Grouping by bank produced six near-identical rows on the seed data and buried the one
+  // group a live case actually needed. An operator thinks in groups ("who has O-?"), never in
+  // bank-and-group pairs, so each scarce group gets a single line that names every bank
+  // holding it. Nothing left anywhere in the city is a different, louder problem.
   for (const group of BLOOD_GROUPS) {
     const label = BLOOD_GROUP_LABEL[group];
     const cityTotal = bloodBanks.reduce((sum, b) => sum + b.inventory[group].available, 0);
@@ -377,21 +382,24 @@ function collectAlerts(input: {
       });
       continue;
     }
-    for (const bank of bloodBanks) {
-      const units = bank.inventory[group].available;
-      if (units < 1 || units > LOW_BLOOD_UNITS) continue;
-      const cityContext =
-        cityTotal === units
-          ? `, the only ${units === 1 ? "one" : `${units}`} recorded in the city`
-          : `, out of ${cityTotal} in the city`;
-      alerts.push({
-        id: `BLOOD_SHORTAGE:${bank.id}:${group}`,
-        level: "WARNING",
-        kind: "BLOOD_SHORTAGE",
-        message: `${bank.name} is down to ${plural(units, "unit")} of ${label}${cityContext}.`,
-        bloodBankId: bank.id,
-      });
-    }
+    // Scarce city-wide, or held in ones and twos wherever it exists.
+    const holders = bloodBanks
+      .filter((b) => b.inventory[group].available > 0)
+      .sort((a, b) => b.inventory[group].available - a.inventory[group].available);
+    const thinlySpread = holders.every((b) => b.inventory[group].available <= LOW_BLOOD_UNITS);
+    if (cityTotal > LOW_BLOOD_UNITS && !thinlySpread) continue;
+
+    const where = holders
+      .map((b) => `${plural(b.inventory[group].available, "unit")} at ${b.name}`)
+      .join(", ");
+    alerts.push({
+      id: `BLOOD_SHORTAGE:GROUP:${group}`,
+      level: "WARNING",
+      kind: "BLOOD_SHORTAGE",
+      message: `Only ${plural(cityTotal, "unit")} of ${label} in the city: ${where}.`,
+      // Only point at a bank when there is exactly one place to call.
+      bloodBankId: holders.length === 1 ? holders[0].id : undefined,
+    });
   }
 
   // Unanswered requests: a case with nobody replying is a case standing still at the roadside.

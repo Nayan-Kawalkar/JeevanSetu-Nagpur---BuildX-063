@@ -23,7 +23,7 @@ function project(lat: number, lng: number) {
   return { x, y };
 }
 
-const PX_PER_KM = (VIEW.w / (BBOX.lngMax - BBOX.lngMin)) / KM_PER_DEG_LNG;
+const PX_PER_KM = VIEW.w / (BBOX.lngMax - BBOX.lngMin) / KM_PER_DEG_LNG;
 
 export type CapacityBand = "GOOD" | "TIGHT" | "FULL";
 
@@ -52,6 +52,90 @@ const BAND_FILL: Record<CapacityBand, string> = {
   TIGHT: "#d97706",
   FULL: "#dc2626",
 };
+
+/** Priority order decides who keeps their label when two would collide. */
+const ROLE_RANK: Record<string, number> = { PRIMARY: 0, BACKUP: 1, UNSUITABLE: 2, NONE: 3 };
+
+// ---------------------------------------------------------------- label placement
+
+interface Box {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+interface LabelCandidate {
+  id: string;
+  text: string;
+  /** Full text for the accessible tooltip when the drawn text is shortened. */
+  title: string;
+  anchor: { x: number; y: number };
+  /** Half-size of the marker, so the label clears it. */
+  gap: number;
+  fontSize: number;
+  weight: number;
+  fill: string;
+}
+
+interface PlacedLabel extends LabelCandidate {
+  x: number;
+  y: number;
+  textAnchor: "start" | "end" | "middle";
+}
+
+/** SVG has no text metrics before paint, so approximate: 0.55em per character is close for this face. */
+function textWidth(text: string, fontSize: number): number {
+  return text.length * fontSize * 0.55;
+}
+
+/** Long hospital names never fit; cut at a word boundary and keep the full name in a tooltip. */
+function shorten(name: string, max = 24): string {
+  const head = name.split(",")[0];
+  if (head.length <= max) return head;
+  const cut = head.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 10 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
+function overlaps(a: Box, b: Box): boolean {
+  return !(a.x2 < b.x1 || b.x2 < a.x1 || a.y2 < b.y1 || b.y2 < a.y1);
+}
+
+function inView(b: Box): boolean {
+  return b.x1 >= 2 && b.x2 <= VIEW.w - 2 && b.y1 >= 2 && b.y2 <= VIEW.h - 2;
+}
+
+/**
+ * Greedy label placement in priority order: the incident and the recommended hospital
+ * get their label first, and anything that cannot be drawn without overlapping is dropped
+ * rather than rendered as unreadable overlapping text. Dropped labels still appear on hover.
+ */
+function placeLabels(candidates: LabelCandidate[], reserved: Box[]): PlacedLabel[] {
+  const taken: Box[] = [...reserved];
+  const placed: PlacedLabel[] = [];
+
+  for (const c of candidates) {
+    const w = textWidth(c.text, c.fontSize);
+    const h = c.fontSize * 1.15;
+    const { x, y } = c.anchor;
+    const options: { x: number; y: number; textAnchor: PlacedLabel["textAnchor"]; box: Box }[] = [
+      // right, left, above, below
+      { x: x + c.gap, y: y + h * 0.32, textAnchor: "start", box: { x1: x + c.gap, y1: y - h / 2, x2: x + c.gap + w, y2: y + h / 2 } },
+      { x: x - c.gap, y: y + h * 0.32, textAnchor: "end", box: { x1: x - c.gap - w, y1: y - h / 2, x2: x - c.gap, y2: y + h / 2 } },
+      { x, y: y - c.gap - h * 0.35, textAnchor: "middle", box: { x1: x - w / 2, y1: y - c.gap - h * 1.3, x2: x + w / 2, y2: y - c.gap } },
+      { x, y: y + c.gap + h, textAnchor: "middle", box: { x1: x - w / 2, y1: y + c.gap, x2: x + w / 2, y2: y + c.gap + h * 1.3 } },
+    ];
+
+    const fit = options.find((o) => inView(o.box) && !taken.some((t) => overlaps(t, o.box)));
+    if (!fit) continue;
+    taken.push(fit.box);
+    placed.push({ ...c, x: fit.x, y: fit.y, textAnchor: fit.textAnchor });
+  }
+  return placed;
+}
+
+// ---------------------------------------------------------------- component
 
 export function NagpurMap({
   hospitals = [],
@@ -85,6 +169,73 @@ export function NagpurMap({
   }, []);
 
   const primaryIncident = incidents[0];
+
+  const labels = useMemo(() => {
+    if (!showLabels) return [];
+    const candidates: LabelCandidate[] = [];
+
+    for (const inc of incidents) {
+      const p = project(inc.lat, inc.lng);
+      candidates.push({
+        id: inc.id,
+        text: shorten(inc.label, 28),
+        title: inc.label,
+        anchor: p,
+        gap: 18,
+        fontSize: 15,
+        weight: 700,
+        fill: "#991b1b",
+      });
+    }
+
+    const byPriority = [...hospitals].sort(
+      (a, b) => (ROLE_RANK[a.role ?? "NONE"] ?? 3) - (ROLE_RANK[b.role ?? "NONE"] ?? 3),
+    );
+    for (const h of byPriority) {
+      const p = project(h.lat, h.lng);
+      const isPrimary = h.role === "PRIMARY";
+      candidates.push({
+        id: h.id,
+        text: shorten(h.name) + (h.stale ? " ⚠" : ""),
+        title: h.name,
+        anchor: p,
+        gap: isPrimary ? 28 : 12,
+        fontSize: isPrimary ? 16 : 13,
+        weight: isPrimary ? 700 : 400,
+        fill: h.role === "UNSUITABLE" ? "#991b1b" : "#0f172a",
+      });
+    }
+
+    for (const b of bloodBanks) {
+      const p = project(b.lat, b.lng);
+      candidates.push({
+        id: b.id,
+        text: shorten(b.label, 20),
+        title: b.label,
+        anchor: p,
+        gap: 10,
+        fontSize: 12,
+        weight: 400,
+        fill: "#7f1d1d",
+      });
+    }
+
+    // Keep labels clear of the scale bar in the bottom-left corner.
+    const reserved: Box[] = [{ x1: 10, y1: VIEW.h - 50, x2: 40 + 5 * PX_PER_KM, y2: VIEW.h - 10 }];
+    return placeLabels(candidates, reserved);
+  }, [hospitals, bloodBanks, incidents, showLabels]);
+
+  const hoveredLabel = useMemo(() => {
+    if (!hovered || labels.some((l) => l.id === hovered)) return null;
+    const all = [
+      ...hospitals.map((h) => ({ id: h.id, label: h.name, lat: h.lat, lng: h.lng, fill: "#0f172a" })),
+      ...bloodBanks.map((b) => ({ id: b.id, label: b.label, lat: b.lat, lng: b.lng, fill: "#7f1d1d" })),
+      ...ambulances.map((a) => ({ id: a.id, label: a.label, lat: a.lat, lng: a.lng, fill: "#1e3a8a" })),
+    ].find((x) => x.id === hovered);
+    if (!all) return null;
+    const p = project(all.lat, all.lng);
+    return { ...all, x: p.x, y: p.y };
+  }, [hovered, labels, hospitals, bloodBanks, ambulances]);
 
   return (
     <div className={cn("overflow-hidden rounded-xl border border-border bg-slate-50", className)}>
@@ -129,19 +280,17 @@ export function NagpurMap({
             );
           })()}
 
+        {/* --- markers --- */}
+
         {bloodBanks.map((b) => {
           const p = project(b.lat, b.lng);
           return (
             <g key={b.id} onMouseEnter={() => setHovered(b.id)} onMouseLeave={() => setHovered(null)}>
+              <title>{b.label}</title>
               <circle cx={p.x} cy={p.y} r={7} fill="#fecaca" stroke="#b91c1c" strokeWidth={2} />
               <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize={9} fontWeight={700} fill="#7f1d1d">
                 B
               </text>
-              {(showLabels || hovered === b.id) && (
-                <text x={p.x + 11} y={p.y + 4} fontSize={13} fill="#7f1d1d">
-                  {b.label}
-                </text>
-              )}
             </g>
           );
         })}
@@ -149,16 +298,12 @@ export function NagpurMap({
         {ambulances.map((a) => {
           const p = project(a.lat, a.lng);
           return (
-            <g key={a.id}>
+            <g key={a.id} onMouseEnter={() => setHovered(a.id)} onMouseLeave={() => setHovered(null)}>
+              <title>{a.label}</title>
               <rect x={p.x - 7} y={p.y - 5} width={14} height={10} rx={2} fill="#1d4ed8" />
               <text x={p.x} y={p.y + 3} textAnchor="middle" fontSize={7} fontWeight={700} fill="#fff">
                 AMB
               </text>
-              {hovered === a.id && (
-                <text x={p.x + 11} y={p.y + 4} fontSize={13} fill="#1e3a8a">
-                  {a.label}
-                </text>
-              )}
             </g>
           );
         })}
@@ -170,6 +315,7 @@ export function NagpurMap({
           const size = isPrimary ? 20 : 15;
           return (
             <g key={h.id} onMouseEnter={() => setHovered(h.id)} onMouseLeave={() => setHovered(null)}>
+              <title>{h.name}</title>
               {isPrimary && <circle cx={p.x} cy={p.y} r={26} fill="#05966922" stroke="#059669" strokeWidth={2} />}
               <rect
                 x={p.x - size / 2}
@@ -188,18 +334,6 @@ export function NagpurMap({
               {isUnsuitable && (
                 <line x1={p.x - 11} y1={p.y + 11} x2={p.x + 11} y2={p.y - 11} stroke="#7f1d1d" strokeWidth={2.5} />
               )}
-              {(showLabels || hovered === h.id) && (
-                <text
-                  x={p.x + size / 2 + 5}
-                  y={p.y + 4}
-                  fontSize={isPrimary ? 16 : 13}
-                  fontWeight={isPrimary ? 700 : 400}
-                  fill={isUnsuitable ? "#991b1b" : "#0f172a"}
-                >
-                  {h.name}
-                  {h.stale ? " ⚠" : ""}
-                </text>
-              )}
             </g>
           );
         })}
@@ -208,24 +342,60 @@ export function NagpurMap({
           const p = project(inc.lat, inc.lng);
           return (
             <g key={inc.id}>
+              <title>{inc.label}</title>
               <circle cx={p.x} cy={p.y} r={16} fill="#dc262633" />
               <circle cx={p.x} cy={p.y} r={9} fill="#dc2626" stroke="#fff" strokeWidth={2.5} />
               <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize={11} fontWeight={900} fill="#fff">
                 !
               </text>
-              <text x={p.x + 14} y={p.y - 10} fontSize={15} fontWeight={700} fill="#991b1b">
-                {inc.label}
-              </text>
             </g>
           );
         })}
+
+        {/* --- labels, drawn last so they sit above every marker --- */}
+
+        {labels.map((l) => (
+          <text
+            key={l.id}
+            x={l.x}
+            y={l.y}
+            textAnchor={l.textAnchor}
+            fontSize={l.fontSize}
+            fontWeight={l.weight}
+            fill={l.fill}
+            paintOrder="stroke"
+            stroke="#f1f5f9"
+            strokeWidth={3}
+            strokeLinejoin="round"
+          >
+            <title>{l.title}</title>
+            {l.text}
+          </text>
+        ))}
+
+        {/* A label that lost the collision contest is still reachable by pointing at its marker. */}
+        {hoveredLabel && (
+          <text
+            x={hoveredLabel.x + 14}
+            y={hoveredLabel.y - 12}
+            fontSize={14}
+            fontWeight={700}
+            fill={hoveredLabel.fill}
+            paintOrder="stroke"
+            stroke="#f1f5f9"
+            strokeWidth={4}
+            strokeLinejoin="round"
+          >
+            {hoveredLabel.label}
+          </text>
+        )}
 
         {/* Scale bar */}
         <g transform={`translate(24, ${VIEW.h - 28})`}>
           <line x1={0} y1={0} x2={5 * PX_PER_KM} y2={0} stroke="#475569" strokeWidth={3} />
           <line x1={0} y1={-5} x2={0} y2={5} stroke="#475569" strokeWidth={3} />
           <line x1={5 * PX_PER_KM} y1={-5} x2={5 * PX_PER_KM} y2={5} stroke="#475569" strokeWidth={3} />
-          <text x={5 * PX_PER_KM / 2} y={-9} textAnchor="middle" fontSize={13} fill="#475569">
+          <text x={(5 * PX_PER_KM) / 2} y={-9} textAnchor="middle" fontSize={13} fill="#475569">
             5 km
           </text>
         </g>
@@ -243,7 +413,7 @@ export function NagpurMap({
           <span className="inline-block h-2.5 w-4 rounded-sm bg-blue-700" aria-hidden />
           Ambulance
         </span>
-        <span className="ml-auto">Straight-line positions · no basemap required</span>
+        <span className="ml-auto">Straight-line positions · point at a marker for its full name</span>
       </div>
     </div>
   );

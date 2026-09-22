@@ -78,7 +78,15 @@ export function NearestVsRecommended({
             <span className="font-semibold tabular-nums text-slate-900">{recommended.etaMinutes} min</span> ·{" "}
             {recommended.distanceKm} km by road
           </p>
-          <p className="mt-2 text-xs font-medium uppercase tracking-wide text-muted">Everything on the list</p>
+          {/*
+            Named for exactly what the bullets are — the items the nearest hospital could not
+            give — rather than something like "everything on the list", which would read as a
+            claim that these three lines are the whole requirement list. The full list is on the
+            card below; this panel is a contrast, not a summary.
+          */}
+          <p className="mt-2 text-xs font-medium uppercase tracking-wide text-muted">
+            Has what the nearest one lacks
+          </p>
           <ul className="mt-1 space-y-0.5 text-sm text-slate-700">
             {blockers.map((r) => (
               <li key={r}>
