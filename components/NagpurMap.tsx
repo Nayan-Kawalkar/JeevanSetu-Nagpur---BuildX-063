@@ -4,12 +4,13 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * A dependency-free SVG map of the Nagpur demo area.
+ * A dependency-free map of the Nagpur demo area.
  *
- * Deliberately not a tile map: a hackathon venue often has no usable network, and a
- * demo that fails because OpenStreetMap tiles did not load is a demo that fails. This
- * projects real coordinates onto a fixed bounding box, so positions and distances are
- * honest even though there is no basemap imagery.
+ * Everything that carries meaning — markers, distance rings, routes, the scale bar — is drawn
+ * by this component from real coordinates, so the geometry is ours and always renders. Open
+ * street tiles are layered underneath for recognisable context, and they are the only part that
+ * needs a network: if they fail, the schematic grid shows through and nothing else changes.
+ * That is the point. A venue with no wifi must still get a working map.
  */
 
 const BBOX = { latMin: 21.02, latMax: 21.2, lngMin: 78.92, lngMax: 79.17 };
@@ -24,6 +25,81 @@ function project(lat: number, lng: number) {
 }
 
 const PX_PER_KM = VIEW.w / (BBOX.lngMax - BBOX.lngMin) / KM_PER_DEG_LNG;
+
+// ---------------------------------------------------------------- basemap tiles
+
+/**
+ * Real street tiles from OpenStreetMap, drawn straight into the SVG as <image> elements.
+ *
+ * No API key, no billing account and no map library: OSM tiles are open, which is the whole
+ * reason they are here. Google Maps needs a key this project does not have, and a map that
+ * cannot render is worse than one that renders plainly. If the tiles fail — no network at the
+ * venue, OSM unreachable — the grid underneath simply shows through and every marker, ring and
+ * distance stays exactly where it was. The basemap is decoration; the geometry is ours.
+ *
+ * Attribution is not optional. OpenStreetMap's licence requires the credit rendered below.
+ */
+const TILE_ZOOM = 13;
+
+function lngToTileX(lng: number, z: number): number {
+  return ((lng + 180) / 360) * 2 ** z;
+}
+
+function latToTileY(lat: number, z: number): number {
+  const r = (lat * Math.PI) / 180;
+  return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z;
+}
+
+function tileXToLng(x: number, z: number): number {
+  return (x / 2 ** z) * 360 - 180;
+}
+
+function tileYToLat(y: number, z: number): number {
+  const n = Math.PI - (2 * Math.PI * y) / 2 ** z;
+  return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+
+export interface BasemapTile {
+  key: string;
+  url: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Tiles are Web Mercator and this map is equirectangular. Across 0.18° of latitude at 21°N the
+ * two disagree by well under a pixel, so each tile is simply projected by its own corners rather
+ * than reprojecting the whole map. At city scale that is exact enough; at country scale it
+ * would not be.
+ */
+function basemapTiles(): BasemapTile[] {
+  const z = TILE_ZOOM;
+  const x0 = Math.floor(lngToTileX(BBOX.lngMin, z));
+  const x1 = Math.floor(lngToTileX(BBOX.lngMax, z));
+  const y0 = Math.floor(latToTileY(BBOX.latMax, z));
+  const y1 = Math.floor(latToTileY(BBOX.latMin, z));
+  const out: BasemapTile[] = [];
+  for (let x = x0; x <= x1; x++) {
+    for (let y = y0; y <= y1; y++) {
+      const topLeft = project(tileYToLat(y, z), tileXToLng(x, z));
+      const bottomRight = project(tileYToLat(y + 1, z), tileXToLng(x + 1, z));
+      out.push({
+        key: `${z}/${x}/${y}`,
+        // Subdomain rotation keeps a page load from queueing behind one host's connection limit.
+        url: `https://${["a", "b", "c"][(x + y) % 3]}.tile.openstreetmap.org/${z}/${x}/${y}.png`,
+        x: topLeft.x,
+        y: topLeft.y,
+        w: bottomRight.x - topLeft.x,
+        h: bottomRight.y - topLeft.y,
+      });
+    }
+  }
+  return out;
+}
+
+const TILES = basemapTiles();
 
 export type CapacityBand = "GOOD" | "TIGHT" | "FULL";
 
@@ -144,6 +220,7 @@ export function NagpurMap({
   incidents = [],
   route,
   showLabels = true,
+  basemap = true,
   className,
   height = 420,
 }: {
@@ -154,6 +231,8 @@ export function NagpurMap({
   /** Straight line from an incident to the confirmed hospital. */
   route?: { from: { lat: number; lng: number }; to: { lat: number; lng: number }; label?: string };
   showLabels?: boolean;
+  /** Draw OpenStreetMap tiles behind the data. Off gives the plain schematic grid. */
+  basemap?: boolean;
   className?: string;
   height?: number;
 }) {
@@ -246,7 +325,26 @@ export function NagpurMap({
         aria-label={`Map of the Nagpur demo area showing ${hospitals.length} hospitals, ${bloodBanks.length} blood banks and ${incidents.length} incidents`}
       >
         <rect width={VIEW.w} height={VIEW.h} fill="#f1f5f9" />
-        {grid.map((l, i) => (
+        {basemap && (
+          <g opacity={0.95}>
+            {TILES.map((t) => (
+              <image
+                key={t.key}
+                href={t.url}
+                x={t.x}
+                y={t.y}
+                width={t.w}
+                height={t.h}
+                preserveAspectRatio="none"
+                // A tile that 404s or times out just leaves the grid showing; nothing else breaks.
+                onError={(e) => e.currentTarget.remove()}
+              />
+            ))}
+          </g>
+        )}
+        {/* With streets underneath, the schematic grid becomes noise — keep it only as the
+            fallback surface when there is no basemap. */}
+        {!basemap && grid.map((l, i) => (
           <line key={i} {...l} stroke="#e2e8f0" strokeWidth={1} />
         ))}
 
@@ -413,7 +511,24 @@ export function NagpurMap({
           <span className="inline-block h-2.5 w-4 rounded-sm bg-blue-700" aria-hidden />
           Ambulance
         </span>
-        <span className="ml-auto">Straight-line positions · point at a marker for its full name</span>
+        <span className="ml-auto">
+          {basemap ? (
+            <>
+              Streets ©{" "}
+              <a
+                href="https://www.openstreetmap.org/copyright"
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2"
+              >
+                OpenStreetMap
+              </a>{" "}
+              contributors · point at a marker for its name
+            </>
+          ) : (
+            "Straight-line positions · point at a marker for its full name"
+          )}
+        </span>
       </div>
     </div>
   );

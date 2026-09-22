@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useId, useMemo, useRef, useState, type FormEvent } from "react";
-import { NagpurMap } from "@/components/NagpurMap";
+import { MapView } from "@/components/MapView";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Select, TextArea, TextInput, SegmentedControl } from "@/components/ui/field";
@@ -670,7 +670,7 @@ export function NewCaseForm() {
           </Field>
 
           <div>
-            <NagpurMap
+            <MapView
               incidents={
                 location
                   ? [

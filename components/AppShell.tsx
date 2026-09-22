@@ -59,64 +59,67 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-full flex-col">
       <DemoBanner />
-      <header className="sticky top-0 z-40 border-b border-border bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
-          <Link href="/" className="flex items-center gap-2" aria-label={`${t("app.name")} · ${t("nav.home")}`}>
-            <Brand label="JS" />
-            <span className="leading-tight">
-              <span className="block text-sm font-bold tracking-tight text-slate-900">{t("app.name")}</span>
-              {/*
-                The subtitle is the next thing to give way after the role badge. The language
-                switcher is a third block in this row and 375 px cannot hold brand + switcher +
-                live indicator + reset without a fourth sticky line; the subtitle only restates
-                what the banner above and the nav below already say.
-              */}
-              <span className="hidden text-[11px] text-muted sm:block">{t("shell.subtitle")}</span>
-            </span>
-          </Link>
-          <div className="order-last w-full sm:order-none sm:w-auto sm:flex-1">
-            <TopNav />
-          </div>
-          {/*
-            flex-wrap: the reset button is a third item here and 375 px cannot hold all three on
-            one line. The role badge is the one that gives way on a phone — the nav below already
-            marks the current role with aria-current and a filled pill, so on a small screen it is
-            a duplicate that costs a whole sticky row. This header is fixed to the top of a 375 ×
-            812 screen a paramedic is working one-handed; every row it keeps is a row of the case
-            they cannot see.
+      {/*
+        Two deliberate rows, not one wrapping row.
 
-            The language switcher never hides. Someone who cannot read this header in English is
-            precisely the person who needs it, and it is useless to them behind a menu.
-          */}
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <LanguageSwitcher />
-            {/*
-              The way in to role enforcement. Until this link existed /demo-login was reachable
-              only by typing the URL, so the guards were invisible unless somebody already knew
-              they were there. It sits beside the role badge because that badge is what changes
-              when you use it.
-            */}
-            <Link
-              href="/demo-login"
-              title={t("demoLogin.linkTitle")}
-              className="inline-flex min-h-11 items-center rounded-md px-2.5 text-xs font-semibold text-slate-600 underline-offset-4 hover:bg-slate-100 hover:text-slate-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
-            >
-              {t("demoLogin.link")}
+        Everything used to share a single flex-wrap line. With seven destinations and five
+        controls competing for it, the line broke wherever it happened to run out of room and
+        the header came apart into three ragged rows with "Camps" and "Relay" orphaned under
+        the brand. Splitting identity and controls from navigation gives each a row it cannot
+        overflow, and the result is stable at every width instead of depending on how many
+        characters the current language happens to need.
+      */}
+      <header className="sticky top-0 z-40 border-b border-border bg-white/95 backdrop-blur">
+        <div className="border-b border-border/70">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
+            <Link href="/" className="flex items-center gap-2" aria-label={`${t("app.name")} · ${t("nav.home")}`}>
+              <Brand label="JS" />
+              {/* The wordmark goes first on a phone: the JS mark already identifies the app,
+                  and those two words are the difference between fitting across 375 px and
+                  scrolling the whole page sideways. */}
+              <span className="hidden leading-tight sm:block">
+                <span className="block text-sm font-bold tracking-tight text-slate-900">{t("app.name")}</span>
+                <span className="hidden text-[11px] text-muted md:block">{t("shell.subtitle")}</span>
+              </span>
             </Link>
-            <span className="hidden sm:inline-flex">
-              <RoleBadge />
-            </span>
-            {/*
-              The live emergency counter is the second thing to give way. With the switcher in
-              the row, 375 px holds two of these three controls, and the counter is the one a
-              crew member on a phone needs least — it counts the whole city, while the list
-              below counts their own cases. It stays in full on every screen from sm up.
-            */}
-            <span className="hidden sm:inline-flex">
-              <EmergencyIndicator />
-            </span>
-            <DemoReset />
+
+            <div className="ml-auto flex items-center gap-1.5">
+              {/*
+                Ordered by how often it is needed, because this is the row that sheds items
+                first on a narrow screen. The counter is city-wide and the least useful to a
+                crew looking at their own case, so it goes first; the role badge duplicates the
+                filled pill in the nav below, so it goes next.
+              */}
+              <span className="hidden lg:inline-flex">
+                <EmergencyIndicator />
+              </span>
+              <span className="hidden md:inline-flex">
+                <RoleBadge />
+              </span>
+              {/* Never hidden: someone who cannot read this header in English is exactly the
+                  person who needs the switcher, and it is useless to them behind a menu. */}
+              {/* Visibility lives on a wrapper: cn() is a plain join, so a `hidden` passed into
+                  the switcher would sit alongside its own `inline-flex` and lose. */}
+              <span className="sm:hidden">
+                <LanguageSwitcher compact />
+              </span>
+              <span className="hidden sm:block">
+                <LanguageSwitcher />
+              </span>
+              <Link
+                href="/demo-login"
+                title={t("demoLogin.linkTitle")}
+                className="hidden min-h-11 items-center rounded-md px-2.5 text-xs font-semibold text-slate-600 underline-offset-4 hover:bg-slate-100 hover:text-slate-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 sm:inline-flex"
+              >
+                {t("demoLogin.link")}
+              </Link>
+              <DemoReset />
+            </div>
           </div>
+        </div>
+
+        <div className="mx-auto max-w-7xl px-4">
+          <TopNav />
         </div>
       </header>
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">{children}</main>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { HospitalRankCard } from "@/components/HospitalRankCard";
-import { NagpurMap, type MapHospital, type MapPoint } from "@/components/NagpurMap";
+import { MapView, type MapHospital, type MapPoint } from "@/components/MapView";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -300,7 +300,7 @@ function MatchBody({
 
   return (
     <div className="space-y-4">
-      <NagpurMap
+      <MapView
         hospitals={mapHospitals}
         bloodBanks={mapBanks}
         incidents={[incident]}

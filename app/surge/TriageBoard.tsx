@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { NagpurMap, type MapHospital, type MapPoint } from "@/components/NagpurMap";
+import { MapView, type MapHospital, type MapPoint } from "@/components/MapView";
 import { ResourceChips } from "@/components/ResourceChips";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -137,7 +137,7 @@ export function TriageBoard({
           action={<Badge tone="danger">{incident.id}</Badge>}
         />
         <CardBody className="p-3">
-          <NagpurMap hospitals={mapHospitals} incidents={mapIncidents} height={380} />
+          <MapView hospitals={mapHospitals} incidents={mapIncidents} height={380} />
         </CardBody>
       </Card>
 

@@ -114,18 +114,44 @@ export function CaseScreen({ caseId }: { caseId: string }) {
             }
           />
 
-          <HospitalMatching
-            emergencyCase={emergencyCase}
-            confirmedHospital={hospital}
-            pendingRequest={pendingRequest}
-          />
+          {/*
+            Order flips once an ask exists.
 
-          <RequestStatusPanel
-            emergencyCase={emergencyCase}
-            requests={requests}
-            hospitalById={hospitalById}
-            backupHospital={backupHospital}
-          />
+            Before asking, the ranking is the thing you need and the status panel has nothing to
+            say. After asking, the opposite is true — and leaving the panel below six full hospital
+            cards put the confirmation roughly two screens under the button that caused it, so
+            pressing Send looked like it did nothing at all. Whichever of the two matters right now
+            goes first.
+          */}
+          {requests.length > 0 ? (
+            <>
+              <RequestStatusPanel
+                emergencyCase={emergencyCase}
+                requests={requests}
+                hospitalById={hospitalById}
+                backupHospital={backupHospital}
+              />
+              <HospitalMatching
+                emergencyCase={emergencyCase}
+                confirmedHospital={hospital}
+                pendingRequest={pendingRequest}
+              />
+            </>
+          ) : (
+            <>
+              <HospitalMatching
+                emergencyCase={emergencyCase}
+                confirmedHospital={hospital}
+                pendingRequest={pendingRequest}
+              />
+              <RequestStatusPanel
+                emergencyCase={emergencyCase}
+                requests={requests}
+                hospitalById={hospitalById}
+                backupHospital={backupHospital}
+              />
+            </>
+          )}
 
           {onJourney && (
             <AmbulanceControls

@@ -65,7 +65,15 @@ import type { CreateCaseInput, CreateRequestInput, RespondRequestInput, UpdateCa
  * request is a stalled ambulance, and the control room needs the case back in MATCHING quickly
  * enough to try the backup while the crew is still loading.
  */
-export const REQUEST_EXPIRY_MINUTES = 3;
+/**
+ * How long a hospital has to answer before the ask lapses and the case returns to matching.
+ *
+ * Ten minutes, not three. Three is closer to the real operational pressure, but it is shorter
+ * than it takes to walk someone through the screen, so a request would silently expire mid
+ * explanation and the system would look broken when it was behaving exactly as designed.
+ * A lapse the operator never sees happen teaches them nothing.
+ */
+export const REQUEST_EXPIRY_MINUTES = 10;
 
 /** The one action vocabulary the UI, the routes and the state machine all share. */
 export type CaseAction = "START_JOURNEY" | "ARRIVED" | "COMPLETE_HANDOVER" | "CLOSE" | "CANCEL";

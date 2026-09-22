@@ -1,7 +1,7 @@
 "use client";
 
 import { useLocale, useT } from "@/lib/i18n";
-import { LOCALES, LOCALE_LABEL } from "@/lib/types";
+import { LOCALES, LOCALE_LABEL, type Locale } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -13,8 +13,15 @@ import { cn } from "@/lib/utils";
  * a gloved thumb.
  *
  * It places itself nowhere — drop it in a header, a settings row, or the family page.
+ *
+ * `compact` shortens the labels without hiding any of them. Three full words plus a brand and a
+ * reset button do not fit across 375 px, and the overflow pushed the whole page sideways; a
+ * shorter label still lets a Marathi reader recognise their own script at a glance, which is the
+ * thing that must survive. The full name stays as the accessible name and the tooltip.
  */
-export function LanguageSwitcher({ className }: { className?: string }) {
+const SHORT_LABEL: Record<Locale, string> = { en: "EN", mr: "मरा", hi: "हिं" };
+
+export function LanguageSwitcher({ className, compact }: { className?: string; compact?: boolean }) {
   const { locale, setLocale } = useLocale();
   const t = useT();
 
@@ -33,12 +40,15 @@ export function LanguageSwitcher({ className }: { className?: string }) {
             lang={code}
             aria-pressed={active}
             onClick={() => setLocale(code)}
+            title={LOCALE_LABEL[code]}
+            aria-label={LOCALE_LABEL[code]}
             className={cn(
-              "min-h-[44px] rounded-md px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2",
+              "min-h-[44px] rounded-md text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2",
+              compact ? "px-2" : "px-3",
               active ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-white",
             )}
           >
-            {LOCALE_LABEL[code]}
+            <span aria-hidden>{compact ? SHORT_LABEL[code] : LOCALE_LABEL[code]}</span>
           </button>
         );
       })}

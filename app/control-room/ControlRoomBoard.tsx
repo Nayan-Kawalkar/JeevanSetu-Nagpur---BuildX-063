@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { NagpurMap, type MapHospital, type MapPoint } from "@/components/NagpurMap";
+import { MapView, type MapHospital, type MapPoint } from "@/components/MapView";
 import { StatTile } from "@/components/StatTile";
 import { Timeline } from "@/components/Timeline";
 import { Badge } from "@/components/ui/badge";
@@ -104,8 +104,13 @@ export function ControlRoomBoard() {
         />
       </div>
 
-      <AlertPanel alerts={data.alerts} />
+      {/*
+        The map goes directly under the counts, and the alerts move beside it.
 
+        Alerts used to run full width above the map, so seven of them pushed the city off the
+        bottom of the screen and an operator had to scroll a wall display to see where anything
+        was. Both are things you watch rather than read once, so they belong in view together.
+      */}
       <div className="grid gap-4 xl:grid-cols-4">
         {/* min-w-0: without it a grid item is at least as wide as its widest child, and the
             tables below would push the whole page sideways on a phone instead of scrolling
@@ -117,8 +122,9 @@ export function ControlRoomBoard() {
           <BloodPanel bloodBanks={data.bloodBanks} />
         </div>
 
-        <div className="min-w-0 xl:col-span-1">
-          <Card className="xl:sticky xl:top-20">
+        <div className="min-w-0 space-y-4 xl:col-span-1">
+          <AlertPanel alerts={data.alerts} />
+          <Card>
             <CardHeader
               title="Recent activity"
               subtitle="Newest first · the last 25 recorded steps"
@@ -126,7 +132,7 @@ export function ControlRoomBoard() {
             />
             <CardBody className="space-y-3">
               <SyncLine generatedAt={data.generatedAt} pollFailed={pollFailed} />
-              <div className="max-h-[36rem] overflow-y-auto pr-1 xl:max-h-[48rem]">
+              <div className="max-h-[28rem] overflow-y-auto pr-1 xl:max-h-[36rem]">
                 <Timeline events={data.recentEvents} emptyLabel="Nothing has been recorded yet today." />
               </div>
             </CardBody>
@@ -196,7 +202,7 @@ function CityMap({ overview }: { overview: Overview }) {
         }
       />
       <CardBody className="p-3">
-        <NagpurMap
+        <MapView
           hospitals={hospitals}
           bloodBanks={bloodBanks}
           ambulances={ambulances}

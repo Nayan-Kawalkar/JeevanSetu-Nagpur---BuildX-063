@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { RequestBadge, ReservationBadge } from "@/components/labels";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { useNow } from "@/lib/hooks";
@@ -52,7 +53,40 @@ export function RequestStatusPanel({
   const earlier = requests.slice(1);
   const nameOf = (id: string) => hospitalById.get(id)?.name ?? id;
 
+  /*
+   * Bring this panel into view the first time each request appears.
+   *
+   * The Send button sits inside a hospital card part-way down a long ranked list, and the
+   * answer to pressing it renders in a different place entirely. Moving the panel above the
+   * list was not enough on its own: the viewport stays where the finger was, so the crew
+   * pressed Send, saw nothing move, and reasonably concluded it had not worked. Scrolling is
+   * the only thing that connects the press to its result. Keyed on the request id so it fires
+   * once per ask and never fights a scroll the user is making themselves.
+   */
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const announced = useRef<string | null>(null);
+  const latestId = latest?.id;
+  // A request that already existed when this page opened is history, not news: scrolling to it
+  // on load would hijack the view and drop the reader into the middle of the page.
+  const [idAtOpen] = useState<string | null>(() => requests[0]?.id ?? null);
+  useEffect(() => {
+    if (!latestId || latestId === idAtOpen || announced.current === latestId) return;
+    announced.current = latestId;
+    // Sending reorders this panel above the ranked list, and a smooth scroll begun mid-reflow
+    // is simply lost. Jump instantly, then re-assert on the next frame once the new layout has
+    // settled, which is the frame the correct position actually exists in.
+    const jump = () => panelRef.current?.scrollIntoView({ behavior: "auto", block: "center" });
+    jump();
+    const frame = requestAnimationFrame(jump);
+    const settle = setTimeout(jump, 120);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(settle);
+    };
+  }, [latestId, idAtOpen]);
+
   return (
+    <div ref={panelRef} aria-live="polite">
     <Card>
       <CardHeader
         title="The ask"
@@ -74,7 +108,26 @@ export function RequestStatusPanel({
             </div>
 
             {latest.status === "PENDING" && (
-              <Pending request={latest} now={now} hospitalName={nameOf(latest.hospitalId)} />
+              <>
+                <Pending request={latest} now={now} hospitalName={nameOf(latest.hospitalId)} />
+                {/*
+                  Nothing moves until a human at the receiving hospital answers, which is correct
+                  behaviour and confusing the first time you meet it: the screen looks stuck. Name
+                  the other desk and link straight to it, because whoever is driving a demo is
+                  standing in for both parties.
+                */}
+                <p className="text-sm text-slate-700">
+                  Nothing happens here until a coordinator at{" "}
+                  <span className="font-semibold">{nameOf(latest.hospitalId)}</span> answers.{" "}
+                  <a
+                    href={`/hospital/${latest.hospitalId}`}
+                    className="font-semibold text-slate-900 underline underline-offset-2 hover:text-red-700"
+                  >
+                    Open their console
+                  </a>{" "}
+                  to accept or reject it. This page updates on its own within a few seconds.
+                </p>
+              </>
             )}
 
             {latest.status === "REJECTED" && (
@@ -132,6 +185,7 @@ export function RequestStatusPanel({
         )}
       </CardBody>
     </Card>
+    </div>
   );
 }
 
