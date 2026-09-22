@@ -100,18 +100,23 @@ export function OnCallToggle({
         aria-label={`${label} on call`}
         disabled={disabled}
         onClick={() => onChange(!onCall)}
-        className={cn(
-          "relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50",
-          onCall ? "bg-emerald-600" : "bg-slate-300",
-        )}
+        className="flex h-11 w-12 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
       >
+        {/* The visual switch is 28 px; the button around it is 44 px so a gloved thumb can hit it. */}
         <span
           className={cn(
-            "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform",
-            onCall ? "translate-x-[22px]" : "translate-x-0.5",
+            "relative block h-7 w-12 rounded-full transition-colors",
+            onCall ? "bg-emerald-600" : "bg-slate-300",
           )}
           aria-hidden
-        />
+        >
+          <span
+            className={cn(
+              "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform",
+              onCall ? "translate-x-[22px]" : "translate-x-0.5",
+            )}
+          />
+        </span>
       </button>
     </div>
   );

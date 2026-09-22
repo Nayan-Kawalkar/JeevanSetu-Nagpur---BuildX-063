@@ -1,13 +1,11 @@
-import { PhasePlaceholder } from "@/components/PhasePlaceholder";
+import { BloodBankDirectory } from "./BloodBankDirectory";
 
-export const metadata = { title: "Blood bank" };
+export const metadata = {
+  title: "Blood banks",
+  description:
+    "Reported unit stock by blood group at every Nagpur blood bank in the demo network, with city-wide totals and the age of each report.",
+};
 
 export default function BloodBankPage() {
-  return (
-    <PhasePlaceholder
-      title="Blood bank"
-      phase={5}
-      description="Unit stock by blood group with last-verified time and active emergency reservations."
-    />
-  );
+  return <BloodBankDirectory />;
 }

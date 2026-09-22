@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { DemoBanner } from "@/components/DemoBanner";
+import { DemoReset } from "@/components/DemoReset";
 import { EmergencyIndicator } from "@/components/EmergencyIndicator";
 import { RoleBadge } from "@/components/RoleBadge";
 import { TopNav } from "@/components/TopNav";
@@ -23,9 +24,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="order-last w-full sm:order-none sm:w-auto sm:flex-1">
             <TopNav />
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <RoleBadge />
+          {/*
+            flex-wrap: the reset button is a third item here and 375 px cannot hold all three on
+            one line. The role badge is the one that gives way on a phone — the nav below already
+            marks the current role with aria-current and a filled pill, so on a small screen it is
+            a duplicate that costs a whole sticky row. This header is fixed to the top of a 375 ×
+            812 screen a paramedic is working one-handed; every row it keeps is a row of the case
+            they cannot see.
+          */}
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <span className="hidden sm:inline-flex">
+              <RoleBadge />
+            </span>
             <EmergencyIndicator />
+            <DemoReset />
           </div>
         </div>
       </header>

@@ -492,6 +492,24 @@ export function matchCase(id: string, now?: number): MatchResult {
   return result;
 }
 
+/**
+ * The same ranking as `matchCase`, recomputed on today's bed counts but writing nothing.
+ *
+ * A paramedic screen polls its ranking every few seconds. Running the recording version on every
+ * one of those reads would stamp a MATCHING_COMPLETED event into the case timeline several times
+ * a minute and keep bumping `updatedAt`, which buries the real decisions the timeline exists to
+ * show and makes a case look freshly handled when nobody touched it. So a read recomputes and a
+ * write records: the numbers a poll shows are still live, but only a deliberate match is history.
+ * Both paths go through the same `rankFor`, so the two can never recommend different hospitals.
+ */
+export function previewMatch(id: string, now?: number): MatchResult {
+  const emergencyCase = getCase(id);
+  if (!isActive(emergencyCase)) {
+    throw new ApiError(409, `Case ${id} is ${emergencyCase.status}; there is nothing left to match.`);
+  }
+  return rankFor(emergencyCase, now);
+}
+
 // ---------- Request a hospital ----------
 
 /** Everything this hospital cannot give this patient, phrased for a human. */

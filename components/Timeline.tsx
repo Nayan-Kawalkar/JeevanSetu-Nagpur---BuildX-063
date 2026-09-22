@@ -1,3 +1,6 @@
+"use client";
+
+import { useNow } from "@/lib/hooks";
 import type { EmergencyEvent, EventType } from "@/lib/types";
 import { formatTime, timeAgo } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -40,6 +43,10 @@ const ROLE_LABEL: Record<string, string> = {
  * which is also the honest answer to "how do we know the system actually did that".
  */
 export function Timeline({ events, emptyLabel = "Nothing has happened yet." }: { events: EmergencyEvent[]; emptyLabel?: string }) {
+  // The relative age needs the wall clock, which must never be read during render: useNow
+  // supplies it after mount and is null on the server and for the first paint. Until then the
+  // absolute HH:MM beside it already tells the operator when the event happened.
+  const now = useNow(30_000);
   if (events.length === 0) {
     return <p className="py-6 text-center text-sm text-muted">{emptyLabel}</p>;
   }
@@ -59,7 +66,7 @@ export function Timeline({ events, emptyLabel = "Nothing has happened yet." }: {
               {formatTime(e.at)}
             </time>
             <span className="text-xs font-medium text-slate-500">{ROLE_LABEL[e.actorRole] ?? e.actorRole}</span>
-            <span className="text-xs text-slate-400">{timeAgo(e.at)}</span>
+            {now !== null && <span className="text-xs text-slate-400">{timeAgo(e.at, now)}</span>}
           </div>
           <p className="text-sm text-slate-800">{e.message}</p>
         </li>

@@ -1,5 +1,8 @@
+"use client";
+
 import { Badge, type BadgeTone } from "@/components/ui/badge";
-import { timeAgo } from "@/lib/utils";
+import { useNow } from "@/lib/hooks";
+import { formatTime, timeAgo } from "@/lib/utils";
 import type { CaseSeverity, CaseStatus, RequestStatus, ReservationStatus } from "@/lib/types";
 
 // ---------- Severity ----------
@@ -86,9 +89,17 @@ export function SuitabilityBadge({ suitability }: { suitability: "SUITABLE" | "P
 
 // ---------- Data freshness ----------
 
+/** A count confirmed longer ago than this is shown as unconfirmed rather than as fact. */
+const STALE_AFTER_MS = 30 * 60_000;
+
 /**
  * Freshness is a first-class signal here: a confident-looking bed count that was last
  * confirmed an hour ago is exactly the failure the product exists to expose.
+ *
+ * The staleness flag computed by the API (`stale`) always wins. Only when the caller has
+ * none does this fall back to measuring against the browser clock, which useNow supplies
+ * after mount — render itself must stay pure, so the absolute time is shown for the first
+ * paint instead of a relative age guessed from a clock read during render.
  */
 export function FreshnessLabel({
   lastUpdatedAt,
@@ -99,11 +110,12 @@ export function FreshnessLabel({
   stale?: boolean;
   updatedBy?: string;
 }) {
-  const isStale = stale ?? Date.now() - new Date(lastUpdatedAt).getTime() > 30 * 60_000;
+  const now = useNow(60_000);
+  const isStale = stale ?? (now !== null && now - new Date(lastUpdatedAt).getTime() > STALE_AFTER_MS);
   return (
     <span className={isStale ? "text-xs font-medium text-amber-700" : "text-xs text-muted"}>
       {isStale ? "⚠ unconfirmed · " : ""}
-      last confirmed {timeAgo(lastUpdatedAt)}
+      last confirmed {now === null ? `at ${formatTime(lastUpdatedAt)}` : timeAgo(lastUpdatedAt, now)}
       {updatedBy ? ` by ${updatedBy}` : ""}
     </span>
   );

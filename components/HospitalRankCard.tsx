@@ -4,8 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ResourceChips } from "@/components/ResourceChips";
 import { SuitabilityBadge } from "@/components/labels";
+import { useNow } from "@/lib/hooks";
 import { BLOOD_GROUP_LABEL, type BloodGroup, type Hospital, type RankedHospital } from "@/lib/types";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn, formatTime, timeAgo } from "@/lib/utils";
 
 /**
  * One ranked hospital. The reasons matter more than the number: a paramedic has to be
@@ -31,6 +32,9 @@ export function HospitalRankCard({
   disabled?: boolean;
 }) {
   const unsuitable = ranked.suitability === "UNSUITABLE";
+  // How old the bed count is matters as much as the count itself, but the clock may only be
+  // read outside render: null on the server and the first paint, where the absolute time is shown.
+  const now = useNow(60_000);
 
   return (
     <article
@@ -105,7 +109,11 @@ export function HospitalRankCard({
             Score <span className="font-semibold tabular-nums text-slate-700">{ranked.score}</span>/100
           </span>
           <ScoreBar breakdown={ranked.breakdown} />
-          <span>confirmed {timeAgo(hospital.lastUpdatedAt)}</span>
+          <span>
+            {now === null
+              ? `confirmed at ${formatTime(hospital.lastUpdatedAt)}`
+              : `confirmed ${timeAgo(hospital.lastUpdatedAt, now)}`}
+          </span>
         </div>
         {onRequest && (
           <Button

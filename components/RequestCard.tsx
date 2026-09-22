@@ -6,7 +6,21 @@ import { TextInput } from "@/components/ui/field";
 import { ResourceChips } from "@/components/ResourceChips";
 import { RequestBadge, SeverityBadge } from "@/components/labels";
 import { BLOOD_GROUP_LABEL, INCIDENT_LABEL, type EmergencyCase, type HospitalRequest } from "@/lib/types";
+import { useNow } from "@/lib/hooks";
 import { cn, formatTime } from "@/lib/utils";
+
+/**
+ * "2:45" while there is a minute or more left, "45s" once there is not.
+ *
+ * A three-minute deadline shown as "165s" makes a coordinator do arithmetic to work out how long
+ * they have, and the paramedic looking at the same deadline already reads "2:45" — two screens
+ * discussed in the same breath should not disagree about the units. Under a minute it drops back
+ * to bare seconds, which is the form that reads as urgent.
+ */
+function countdown(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
 
 /**
  * An incoming patient, as the receiving coordinator sees it. Shows exactly what will be
@@ -28,7 +42,10 @@ export function RequestCard({
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const pending = request.status === "PENDING";
-  const secondsLeft = Math.round((new Date(request.expiresAt).getTime() - Date.now()) / 1000);
+  // The clock arrives after mount (see useNow), so the countdown is null for the first paint
+  // rather than showing a number measured on the server that the crew would read as live.
+  const now = useNow(1000);
+  const secondsLeft = now === null ? null : Math.round((new Date(request.expiresAt).getTime() - now) / 1000);
 
   return (
     <article
@@ -56,8 +73,13 @@ export function RequestCard({
         </div>
         {pending && (
           <div className="text-right">
-            <p className={cn("text-lg font-bold tabular-nums", secondsLeft < 30 ? "text-red-700" : "text-amber-800")}>
-              {secondsLeft > 0 ? `${secondsLeft}s` : "expiring"}
+            <p
+              className={cn(
+                "text-lg font-bold tabular-nums",
+                secondsLeft !== null && secondsLeft < 30 ? "text-red-700" : "text-amber-800",
+              )}
+            >
+              {secondsLeft === null ? "--" : secondsLeft > 0 ? countdown(secondsLeft) : "expiring"}
             </p>
             <p className="text-xs text-muted">to respond</p>
           </div>

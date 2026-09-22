@@ -1,10 +1,11 @@
 /**
  * Hospital matching for one case.
  *
- * POST asks the engine to decide now; GET asks it to decide again. Both go through the same
- * service call on purpose: a paramedic who pulls to refresh on the roadside must be looking at
- * the beds that exist at that moment, not at a ranking frozen when the case was opened. A bed
- * counted five minutes ago is a bed that may already have someone in it.
+ * POST asks the engine to decide now and records that decision; GET recomputes the same ranking
+ * on the same live figures but records nothing. A paramedic who pulls to refresh on the roadside
+ * must be looking at the beds that exist at that moment, not at a ranking frozen when the case
+ * was opened — a bed counted five minutes ago may already have someone in it — but a refresh is
+ * not a decision and must not appear in the case history as one.
  *
  * Both answers carry the hospital records the ranking names, because the ranking itself holds
  * only ids and the crew needs a name, an area and a phone number. On a weak mobile link the
@@ -14,7 +15,7 @@
  * its reason; it is never a clinical judgement and never an instruction.
  */
 import { handle, json } from "@/lib/api";
-import { matchCase } from "@/lib/services/cases";
+import { matchCase, previewMatch } from "@/lib/services/cases";
 import { listHospitals } from "@/lib/store";
 import type { Hospital, MatchResult } from "@/lib/types";
 
@@ -47,12 +48,11 @@ function hospitalsFor(match: MatchResult): Record<string, Hospital> {
 }
 
 /**
- * Runs matching for a case and packages the ranking with the hospitals it names.
+ * Packages a ranking with the hospitals it names.
  * One helper for both verbs so a GET can never drift into showing a different shape — or
  * staler numbers — than the POST the crew acted on.
  */
-function matchResponse(id: string): MatchResponse {
-  const match = matchCase(id);
+function matchResponse(match: MatchResult): MatchResponse {
   return { match, hospitals: hospitalsFor(match) };
 }
 
@@ -64,18 +64,20 @@ function matchResponse(id: string): MatchResponse {
 export async function POST(_request: Request, context: RouteContext<"/api/cases/[id]/match">): Promise<Response> {
   return handle(async () => {
     const { id } = await context.params;
-    return json(matchResponse(id));
+    return json(matchResponse(matchCase(id)));
   });
 }
 
 /**
  * GET /api/cases/:id/match — the same shape, recomputed live on every read.
- * Deliberately not a cached snapshot: refreshing is how a paramedic checks whether the bed
- * they were promised is still free.
+ * Deliberately not a cached snapshot: refreshing is how a paramedic checks whether the bed they
+ * were promised is still free. It goes through `previewMatch`, which recomputes on the current
+ * bed counts but records nothing, so a screen polling every three seconds cannot fill the case
+ * timeline with matching events nobody asked for or keep marking the case as just updated.
  */
 export async function GET(_request: Request, context: RouteContext<"/api/cases/[id]/match">): Promise<Response> {
   return handle(async () => {
     const { id } = await context.params;
-    return json(matchResponse(id));
+    return json(matchResponse(previewMatch(id)));
   });
 }
