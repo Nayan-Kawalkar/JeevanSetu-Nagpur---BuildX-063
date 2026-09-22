@@ -29,10 +29,12 @@ import {
 import {
   COUNTABLE_RESOURCES,
   RESOURCE_LABEL,
+  RESOURCE_TYPES,
   SPECIALIST_TYPES,
   type CountableResource,
   type EmergencyCase,
   type Hospital,
+  type ResourceType,
   type SpecialistStatus,
 } from "@/lib/types";
 import { UpdateHospitalSchema } from "@/lib/validation";
@@ -137,6 +139,10 @@ export function GET(_request: Request, context: RouteContext<"/api/hospitals/[id
  * The write is stamped MANUAL / HIGH confidence on purpose. Freshness carries weight in the
  * ranking, and a human who has just looked at the ward is the most reliable source this
  * system has — that is the behaviour the weighting exists to reward.
+ *
+ * It also accepts `readinessMinutes`, which is the only way anything in the system records that a
+ * resource exists but is not yet usable. The matcher ranks on travel time plus that delay, so this
+ * is the desk that makes "five minutes further but ready now" a real answer rather than a claim.
  */
 export function PATCH(request: Request, context: RouteContext<"/api/hospitals/[id]">): Promise<Response> {
   return handle(async () => {
@@ -187,6 +193,25 @@ export function PATCH(request: Request, context: RouteContext<"/api/hospitals/[i
           ? `${RESOURCE_LABEL[specialist]} on call${who}`
           : `${RESOURCE_LABEL[specialist]} not on call${why}`,
       );
+    }
+
+    // Twist 4: readiness is merged, never replaced. A coordinator confirming that the CT is clear
+    // must not silently erase the forty minutes someone else recorded against the neurosurgeon.
+    // Zero is kept rather than deleted, because "I checked, it is ready now" is a real report and
+    // the matcher reads a missing key and a reported zero as the same thing anyway.
+    if (patch.readinessMinutes) {
+      const readiness: Partial<Record<ResourceType, number>> = { ...hospital.readinessMinutes };
+      for (const resource of RESOURCE_TYPES) {
+        const minutes = patch.readinessMinutes[resource];
+        if (minutes === undefined) continue;
+        readiness[resource] = minutes;
+        changes.push(
+          minutes === 0
+            ? `${RESOURCE_LABEL[resource]} ready now`
+            : `${RESOURCE_LABEL[resource]} usable in about ${minutes} min`,
+        );
+      }
+      hospital.readinessMinutes = readiness;
     }
 
     hospital.lastUpdatedAt = nowIso();

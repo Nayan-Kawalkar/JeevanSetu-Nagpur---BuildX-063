@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { errorMessage, refreshAll, send, useLive } from "@/lib/hooks";
 import type { EmergencyCase, EmergencyEvent, HospitalRequest } from "@/lib/types";
 import type { UpdateHospitalInput } from "@/lib/validation";
+import { ArrivalsBoard } from "./ArrivalsBoard";
 import { CurrentPatients } from "./CurrentPatients";
 import { IncomingRequests } from "./IncomingRequests";
 import { RequestBlood } from "./RequestBlood";
@@ -155,6 +156,8 @@ export function HospitalConsole({ hospitalId }: { hospitalId: string }) {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          {/* First on the desk: who is already on the way, and how much of their hour is left. */}
+          <ArrivalsBoard hospitalId={hospital.id} cases={data.cases} />
           <IncomingRequests
             requests={data.pendingRequests}
             cases={data.cases}

@@ -37,6 +37,7 @@ import {
   type ActorRole,
   type Availability,
   type CountableResource,
+  type EmergencyCase,
   type FacilityTier,
   type Hospital,
   type ResourceType,
@@ -186,6 +187,33 @@ export interface CampSiteSuggestion {
   averageEtaMinutes: number;
 }
 
+/**
+ * The cases among `ids` that still exist, skipping any that do not.
+ *
+ * The ids arrive in a query string — the surge board links to `/camps?unplaced=<47 ids>` — so they
+ * are a hint about what to site a camp for, not a claim that every one of them is still open. A
+ * demo reset, a closed case or a stale bookmark leaves ids behind that no longer resolve, and
+ * `getCase` throws on those. Mapping it over the list straight turned one dead id into a 404 for
+ * the WHOLE request, which took down the camps list, the capacity ladder and the overflow verdict
+ * along with the suggestion — the board went blank because of a hint it did not need.
+ *
+ * Skipping instead is also what the response contract already promises: the suggestion is present
+ * "only when the request carried `?unplaced=` and at least one id resolved". `patientsServed` then
+ * counts the patients actually sited for, so a partially stale link says something true about a
+ * smaller group rather than something confident about a group that is gone.
+ */
+function resolveCases(ids: string[]): EmergencyCase[] {
+  const found: EmergencyCase[] = [];
+  for (const id of ids) {
+    try {
+      found.push(getCase(id));
+    } catch {
+      // An id that no longer resolves is a stale hint, not a failure of this request.
+    }
+  }
+  return found;
+}
+
 /** Name of the area whose nearest existing facility sits closest to a point. */
 function nearestAreaTo(point: { lat: number; lng: number }): string | undefined {
   let best: Hospital | undefined;
@@ -209,7 +237,7 @@ function nearestAreaTo(point: { lat: number; lng: number }): string | undefined 
  * not a cautious answer, it is a wrong one.
  */
 export function suggestCampSite(unplacedCaseIds: string[]): CampSiteSuggestion | null {
-  const cases = unplacedCaseIds.map((id) => getCase(id));
+  const cases = resolveCases(unplacedCaseIds);
   if (cases.length === 0) return null;
 
   const lat = cases.reduce((sum, c) => sum + c.lat, 0) / cases.length;

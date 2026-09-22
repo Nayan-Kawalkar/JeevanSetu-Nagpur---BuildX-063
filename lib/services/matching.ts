@@ -15,6 +15,7 @@ import {
   BLOOD_GROUP_LABEL,
   COUNTABLE_RESOURCES,
   CRITICAL_RESOURCES,
+  GOLDEN_HOUR_MINUTES,
   SPECIALIST_TYPES,
   type BloodBank,
   type BloodGroup,
@@ -509,6 +510,25 @@ function readinessFor(h: Hospital, required: readonly ResourceType[]): Readiness
   return { delayMinutes, blocker };
 }
 
+/**
+ * Twist 4: would treatment here begin only after the golden hour has already run out?
+ *
+ * The travel weight alone cannot express this. It is 15 of 100 points and its ramp bottoms out at
+ * 40 minutes, so once a hospital is "slow" it is equally slow at 41 minutes and at 90 — and a
+ * facility with a strong capability score keeps winning even when the patient would reach
+ * treatment half an hour after the hour expired. Distance is a gradient; missing the hour is a
+ * threshold, and a threshold has to be modelled as one.
+ *
+ * So within a suitability band, a facility that can start treatment inside the hour outranks one
+ * that cannot, whatever their scores. It never promotes an unsuitable hospital, because the band
+ * is still compared first — this only reorders facilities that are equally able to treat the
+ * patient. And it is inert on seeded data: with no readiness reported anywhere, time to definitive
+ * care is just the ETA, and no seeded hospital is more than an hour from any seeded incident.
+ */
+function missesGoldenHour(row: { timeToDefinitiveCare: number }): boolean {
+  return row.timeToDefinitiveCare > GOLDEN_HOUR_MINUTES;
+}
+
 // ---------- Twist 3: the escalation ladder ----------
 
 interface TierVerdict {
@@ -686,8 +706,8 @@ export function rankHospitals(input: MatchInput): TimedMatchResult {
     };
   });
 
-  // Band first (a suitable hospital always beats an unsuitable one), then score, then the faster
-  // arrival, then id so the order is total and the demo is reproducible.
+  // Band first (a suitable hospital always beats an unsuitable one), then the golden hour, then
+  // score, then the faster arrival, then id so the order is total and the demo is reproducible.
   // The tie-break is time to definitive care rather than ETA for the same reason the score is:
   // with no readiness reported the two are equal, so seeded behaviour is untouched.
   const ranked: TimedRankedHospital[] = rows
@@ -695,6 +715,7 @@ export function rankHospitals(input: MatchInput): TimedMatchResult {
     .sort(
       (a, b) =>
         BAND_ORDER[a.suitability] - BAND_ORDER[b.suitability] ||
+        Number(missesGoldenHour(a)) - Number(missesGoldenHour(b)) ||
         b.score - a.score ||
         a.timeToDefinitiveCare - b.timeToDefinitiveCare ||
         a.hospitalId.localeCompare(b.hospitalId),

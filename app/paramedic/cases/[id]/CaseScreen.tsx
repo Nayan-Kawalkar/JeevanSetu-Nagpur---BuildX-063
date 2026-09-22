@@ -9,6 +9,7 @@ import { errorMessage, useLive } from "@/lib/hooks";
 import type { CaseStatus, Hospital } from "@/lib/types";
 import { AmbulanceControls } from "./AmbulanceControls";
 import { FamilyLinkCard } from "./FamilyLinkCard";
+import { GoldenHourPanel } from "./GoldenHourPanel";
 import { HospitalMatching } from "./HospitalMatching";
 import { Notice } from "./Notice";
 import { PatientHeader } from "./PatientHeader";
@@ -99,6 +100,9 @@ export function CaseScreen({ caseId }: { caseId: string }) {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-4">
+          {/* Highest in the column: the first hour frames every decision below it. */}
+          <GoldenHourPanel emergencyCase={emergencyCase} events={events} confirmedHospital={hospital} />
+
           <RequirementsEditor
             emergencyCase={emergencyCase}
             locked={finished}

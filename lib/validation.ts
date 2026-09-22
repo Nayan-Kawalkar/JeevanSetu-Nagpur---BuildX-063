@@ -49,6 +49,15 @@ const availabilityPatch = z.object({
   total: z.number().int().min(0).max(500).optional(),
 });
 
+/**
+ * Minutes until a resource is actually usable, as reported by the desk that can see it.
+ *
+ * Four hours is the ceiling: past that the honest answer is "not today, send them elsewhere",
+ * not a number. Zero is meaningful and must stay accepted — it is how a coordinator withdraws a
+ * delay they reported earlier and says the thing is ready now.
+ */
+const readinessPatch = z.number().int().min(0).max(240);
+
 export const UpdateHospitalSchema = z
   .object({
     resources: z.partialRecord(z.enum(COUNTABLE_RESOURCES), availabilityPatch).optional(),
@@ -58,9 +67,18 @@ export const UpdateHospitalSchema = z
         z.object({ onCall: z.boolean(), note: z.string().max(120).optional() }),
       )
       .optional(),
+    /**
+     * Twist 4: how long until each thing is usable, not merely counted. A bed that exists but is
+     * forty minutes from being staffed is not a bed this patient can use, and the matcher ranks on
+     * travel time plus this delay. Keyed by every resource type, not only the countable ones,
+     * because the commonest real delay is a specialist driving in.
+     */
+    readinessMinutes: z.partialRecord(z.enum(RESOURCE_TYPES), readinessPatch).optional(),
     updatedBy: z.string().trim().min(1).max(60).default("Hospital coordinator"),
   })
-  .refine((v) => v.resources || v.specialists, { message: "Provide resources or specialists" });
+  .refine((v) => v.resources || v.specialists || v.readinessMinutes, {
+    message: "Provide resources, specialists or readinessMinutes",
+  });
 export type UpdateHospitalInput = z.infer<typeof UpdateHospitalSchema>;
 
 export const UpdateBloodBankSchema = z.object({

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JeevanSetu 360 — how it works</title>
+<style>
+  :root{
+    --ink:#0f172a; --muted:#64748b; --line:#cbd5e1; --bg:#ffffff;
+    --good:#059669; --bad:#dc2626; --warn:#d97706; --soft:#f1f5f9;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Arial,sans-serif}
+  body{padding:32px 40px 60px}
+  .wrap{max-width:1400px;margin:0 auto}
+  h1{font-size:40px;line-height:1.1;margin:0 0 6px;letter-spacing:-.02em}
+  .sub{font-size:20px;color:var(--muted);margin:0 0 28px}
+  section{margin:0 0 34px}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+    margin:0 0 14px;font-weight:700}
+  /* pipeline */
+  .pipe{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap}
+  .step{flex:1 1 150px;min-width:150px;border:2px solid var(--line);border-radius:12px;padding:12px 14px;
+    background:#fff;position:relative}
+  .step .n{font-size:12px;font-weight:800;color:var(--muted)}
+  .step .t{font-size:17px;font-weight:700;margin:3px 0 4px;line-height:1.2}
+  .step .d{font-size:14px;color:var(--muted);line-height:1.35}
+  .step.key{border-color:var(--good);background:#ecfdf5}
+  .step.human{border-color:var(--warn);background:#fffbeb}
+  .tag{position:absolute;top:-10px;right:10px;font-size:11px;font-weight:800;
+    padding:2px 7px;border-radius:999px;color:#fff}
+  .tag.g{background:var(--good)} .tag.w{background:var(--warn)}
+  /* compare */
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .card{border:3px solid;border-radius:14px;padding:18px 20px;background:#fff}
+  .card.no{border-color:var(--bad);background:#fef2f2}
+  .card.yes{border-color:var(--good);background:#ecfdf5}
+  .verdict{font-size:14px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+  .card.no .verdict{color:var(--bad)} .card.yes .verdict{color:var(--good)}
+  .hname{font-size:26px;font-weight:800;margin:6px 0 2px;line-height:1.15}
+  .meta{font-size:17px;color:var(--muted);margin-bottom:12px}
+  ul.chk{list-style:none;padding:0;margin:0;font-size:17px;line-height:1.7}
+  ul.chk li::before{font-weight:800;margin-right:8px}
+  .card.no li::before{content:"✕";color:var(--bad)}
+  .card.yes li::before{content:"✓";color:var(--good)}
+  .punch{margin-top:16px;font-size:19px;font-weight:700;line-height:1.35}
+  /* gate */
+  .gate{border:2px dashed var(--line);border-radius:12px;padding:16px 20px;background:var(--soft);
+    font-size:19px;line-height:1.45}
+  .gate b{font-weight:800}
+  .weights{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .w{flex:1 1 120px;border-radius:8px;padding:8px 10px;background:#fff;border:1px solid var(--line)}
+  .w .p{font-size:22px;font-weight:800}
+  .w .l{font-size:13px;color:var(--muted)}
+  /* rules */
+  .rules{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .rule{border-left:6px solid var(--ink);padding:4px 0 4px 16px}
+  .rule .h{font-size:19px;font-weight:800;line-height:1.25;margin-bottom:5px}
+  .rule .b{font-size:15px;color:var(--muted);line-height:1.45}
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:14px;color:var(--muted)}
+  @media (max-width:900px){
+    body{padding:20px}
+    h1{font-size:28px} .cmp,.rules{grid-template-columns:1fr}
+  }
+  @media print{ body{padding:0} section{break-inside:avoid} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>The right hospital, not merely the nearest one.</h1>
+  <p class="sub">JeevanSetu 360 &middot; emergency coordination for Nagpur &middot; demo data</p>
+
+  <section>
+    <h2>What happens, end to end</h2>
+    <div class="pipe">
+      <div class="step">
+        <div class="n">1</div><div class="t">Crew writes</div>
+        <div class="d">Free text. No codes, no forms to learn.</div>
+      </div>
+      <div class="step">
+        <div class="n">2</div><div class="t">Text &rarr; needs</div>
+        <div class="d">Keyword rules give ICU, neurosurgeon, CT, blood.</div>
+      </div>
+      <div class="step human"><span class="tag w">human</span>
+        <div class="n">3</div><div class="t">Crew corrects</div>
+        <div class="d">The machine proposes. The paramedic decides.</div>
+      </div>
+      <div class="step key"><span class="tag g">the core</span>
+        <div class="n">4</div><div class="t">Rank facilities</div>
+        <div class="d">By what they can actually deliver, now.</div>
+      </div>
+      <div class="step human"><span class="tag w">human</span>
+        <div class="n">5</div><div class="t">Hospital accepts</div>
+        <div class="d">Accepting holds the bed and the blood.</div>
+      </div>
+      <div class="step">
+        <div class="n">6</div><div class="t">Handover</div>
+        <div class="d">Every step timestamped and auditable.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The decision, on the night of the demo</h2>
+    <div class="cmp">
+      <div class="card no">
+        <div class="verdict">Nearest &middot; cannot treat</div>
+        <div class="hname">Khapri Wellness Hospital</div>
+        <div class="meta">6 min away &middot; 3.2 km</div>
+        <ul class="chk">
+          <li>No ICU bed free</li>
+          <li>No neurosurgeon on call</li>
+        </ul>
+        <div class="punch">This is where the ambulance goes today.</div>
+      </div>
+      <div class="card yes">
+        <div class="verdict">Recommended &middot; can treat</div>
+        <div class="hname">Wardha Road Trauma &amp; Neuro</div>
+        <div class="meta">20 min away &middot; 10.7 km</div>
+        <ul class="chk">
+          <li>ICU bed free</li>
+          <li>Neurosurgeon on call</li>
+          <li>4 units O&minus; matched 0.3 km away</li>
+        </ul>
+        <div class="punch">14 minutes further, and it can take this patient.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>How that choice is made</h2>
+    <div class="gate">
+      A score out of 100, from five parts &mdash; but the score is <b>not</b> the deciding thing.
+      A hospital missing a critical need is gated out, and a gated hospital
+      <b>can never outrank one that can treat the patient</b>, whatever it scores.
+      A score can be argued with. A gate cannot.
+      <div class="weights">
+        <div class="w"><div class="p">35</div><div class="l">Has the department</div></div>
+        <div class="w"><div class="p">25</div><div class="l">Bed free right now</div></div>
+        <div class="w"><div class="p">15</div><div class="l">Specialist on call</div></div>
+        <div class="w"><div class="p">15</div><div class="l">Time to treatment</div></div>
+        <div class="w"><div class="p">10</div><div class="l">How fresh the numbers are</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Three rules we can prove</h2>
+    <div class="rules">
+      <div class="rule">
+        <div class="h">A hospital that cannot treat is never recommended</div>
+        <div class="b">Enforced in the ranking, and the API refuses to even send the request.</div>
+      </div>
+      <div class="rule">
+        <div class="h">Accepting is all&#8209;or&#8209;nothing</div>
+        <div class="b">If the last bed just went, the accept fails, says what is short, and holds nothing at all.</div>
+      </div>
+      <div class="rule">
+        <div class="h">A repeated request cannot double&#8209;book</div>
+        <div class="b">A double tap, or a queue replayed after a blackout, is safe.</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Coordination and decision support only. It does not diagnose, prescribe or guarantee.
+    All hospitals, patients and blood stock shown are fictional.
+  </footer>
+
+</div>
+</body>
+</html>
